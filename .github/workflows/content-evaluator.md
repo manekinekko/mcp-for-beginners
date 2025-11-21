@@ -9,7 +9,7 @@ description: |
 imports:
     - ../agents/technical-content-evaluator.md
 
-engine: claude
+engine: copilot
 
 on:
   push:
@@ -31,7 +31,7 @@ tools:
   web-fetch:
 
   # Web search requires Claude models
-  web-search: 
+#   web-search: 
   
   # By default this workflow allows all bash commands within the confine of Github Actions VM 
   bash: [ ":*" ]
