@@ -831,9 +831,61 @@ async def delete_tool(tool_name: str):
 4. Document your contribution with proper tests and documentation
 5. Submit a pull request to the appropriate repository
 
+## GitHub Agentic Workflows for MCP Projects
+
+GitHub Agentic Workflows is an experimental framework that enables AI-powered automation within repositories. This is particularly valuable for MCP projects where documentation, code consistency, and protocol compliance are critical.
+
+### What Are Agentic Workflows?
+
+Agentic workflows combine GitHub Actions infrastructure with AI coding agents to automate tasks using natural language instructions. Instead of complex YAML configurations, you describe what you want the AI to do in plain markdown.
+
+**Key benefits for MCP projects:**
+- **Documentation automation**: Keep docs synchronized with code changes
+- **Protocol compliance**: Automatically verify MCP specification adherence
+- **Multi-language consistency**: Ensure examples across languages remain aligned
+- **Code review assistance**: Get AI-powered feedback on pull requests
+
+### Getting Started with Agentic Workflows
+
+See our comprehensive guide: [GitHub Agentic Workflows for MCP Projects](./github-agentic-workflows.md)
+
+This guide covers:
+- Setting up agentic workflows in your MCP project
+- Real-world examples for documentation sync and compliance checking
+- Best practices for security and cost management
+- Troubleshooting common issues
+
+### Example: Documentation Sync Workflow
+
+Here's a simple workflow that keeps MCP server documentation up-to-date:
+
+```markdown
+---
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+safe-outputs:
+  create-pull-request:
+    draft: true
+---
+
+# MCP Server Documentation Sync
+
+When code changes occur in MCP server implementations:
+1. Review changes to server files
+2. Check if corresponding README.md files are current
+3. Update documentation to reflect API changes
+4. Create a draft PR with improvements
+```
+
+For complete implementation details and more examples, see [github-agentic-workflows.md](./github-agentic-workflows.md).
+
 ## Additional Resources
 
 - [MCP Community Projects](https://github.com/topics/model-context-protocol)
+- [GitHub Agentic Workflows Documentation](https://githubnext.github.io/gh-aw/)
 
 ---
 

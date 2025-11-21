@@ -73,6 +73,9 @@ mindmap
       (MCP Client Ecosystem)
       (MCP Server Registry)
       (Image Generation Tools)
+      (GitHub Agentic Workflows)
+      (AI-Powered Automation)
+      (GitHub Collaboration)
       (GitHub Collaboration)
     07. Early Adoption
       ::icon(fa fa-lightbulb)
@@ -188,6 +191,11 @@ The repository is organized into eleven main sections, each focusing on differen
    - Community-driven enhancements and feedback
    - Using various MCP clients (Claude Desktop, Cline, VSCode)
    - Working with popular MCP servers including image generation
+   - **GitHub Agentic Workflows**: AI-powered automation for MCP projects
+     - Documentation synchronization workflows
+     - Protocol compliance checking
+     - Multi-language code consistency
+     - Automated code review assistance
 
 8. **Lessons from Early Adoption (07-LessonsfromEarlyAdoption/)**
    - Real-world implementations and success stories

@@ -2,6 +2,35 @@
 
 This document serves as a record of all significant changes made to the Model Context Protocol (MCP) for Beginners curriculum. Changes are documented in reverse chronological order (newest changes first).
 
+## November 21, 2025
+
+### GitHub Agentic Workflows Documentation
+
+#### Community Contributions (06-CommunityContributions/) - AI-Powered Automation Guide
+- **New Documentation Added**: Comprehensive guide to GitHub Agentic Workflows for MCP projects
+  - **github-agentic-workflows.md**: Complete implementation guide for AI-powered repository automation
+    - Introduction to agentic workflows combining GitHub Actions with AI coding agents
+    - Quick start guide with installation and first workflow creation
+    - Real-world MCP-specific examples:
+      - MCP Server Documentation Sync
+      - Protocol Compliance Checker
+      - Multi-Language Example Synchronization
+    - Best practices for security, permissions, and cost management
+    - Advanced features: tool configuration, custom MCP servers, workflow imports
+    - Troubleshooting guide and common issues
+    - Resources and community links
+  - **README.md Enhancement**: Added GitHub Agentic Workflows section with overview and quick example
+    - Brief introduction to agentic workflows benefits for MCP projects
+    - Link to comprehensive guide
+    - Example documentation sync workflow
+    - Updated additional resources section
+
+### Documentation Infrastructure
+- **Automated Documentation Maintenance**: Leveraged update-docs.md workflow for identifying documentation gaps
+  - Detected missing user-facing documentation for GitHub Agentic Workflows feature
+  - Created comprehensive guide bridging technical implementation with user needs
+  - Followed Diátaxis framework: tutorial (quick start), how-to (examples), reference (best practices), explanation (concepts)
+
 ## October 6, 2025
 
 ### Getting Started Section Expansion – Advanced Server Usage & Simple Authentication
