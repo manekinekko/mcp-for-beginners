@@ -3,15 +3,17 @@
 #   gh aw compile
 # For more information: https://github.com/githubnext/gh-aw/blob/main/.github/instructions/github-agentic-workflows.instructions.md
 #
-# THis workflow keeps docs synchronized with code changes.
-# Triggered on every push to main, it analyzes diffs to identify changed entities and
-# updates corresponding documentation. Maintains consistent style (precise, active voice,
-# plain English), ensures single source of truth, and creates draft PRs with documentation
-# updates. Supports documentation-as-code philosophy.
+# This workflow evaluates content quality and consistency across the repository.
+# Triggered on every push to main, it analyzes documentation, code samples, and
+# educational materials to ensure high quality standards. Maintains consistent style,
+# validates code examples, checks for accessibility, and creates draft PRs with
+# improvement suggestions. Supports continuous quality improvement philosophy.
 #
-# Source: githubnext/agentics/workflows/update-docs.md@d3422bf940923ef1d43db5559652b8e1e71869f3
+# Resolved workflow manifest:
+#   Imports:
+#     - ../agents/technical-content-evaluator.md
 #
-# Effective stop-time: 2025-12-21 09:39:22
+# Effective stop-time: 2025-12-21 10:40:40
 #
 # Job Dependency Graph:
 # ```mermaid
@@ -49,7 +51,7 @@
 #   - actions/upload-artifact@v5 (330a01c490aca151604b8cf639adc76d48f6c5d4)
 #     https://github.com/actions/upload-artifact/commit/330a01c490aca151604b8cf639adc76d48f6c5d4
 
-name: "Update Docs"
+name: "Content Evaluator"
 "on":
   push:
     branches:
@@ -61,7 +63,7 @@ permissions: read-all
 concurrency:
   group: "gh-aw-${{ github.workflow }}-${{ github.ref }}"
 
-run-name: "Update Docs"
+run-name: "Content Evaluator"
 
 jobs:
   activation:
@@ -77,7 +79,7 @@ jobs:
       - name: Check workflow file timestamps
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          GH_AW_WORKFLOW_FILE: "update-docs.lock.yml"
+          GH_AW_WORKFLOW_FILE: "content-evaluator.lock.yml"
         with:
           script: |
             async function main() {
@@ -229,34 +231,142 @@ jobs:
             main().catch(error => {
               core.setFailed(error instanceof Error ? error.message : String(error));
             });
-      - name: Validate COPILOT_GITHUB_TOKEN or COPILOT_CLI_TOKEN secret
+      - name: Validate CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY secret
         run: |
-          if [ -z "$COPILOT_GITHUB_TOKEN" ] && [ -z "$COPILOT_CLI_TOKEN" ]; then
-            echo "Error: Neither COPILOT_GITHUB_TOKEN nor COPILOT_CLI_TOKEN secret is set"
-            echo "The GitHub Copilot CLI engine requires either COPILOT_GITHUB_TOKEN or COPILOT_CLI_TOKEN secret to be configured."
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "Error: Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY secret is set"
+            echo "The Claude Code engine requires either CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY secret to be configured."
             echo "Please configure one of these secrets in your repository settings."
-            echo "Documentation: https://githubnext.github.io/gh-aw/reference/engines/#github-copilot-default"
+            echo "Documentation: https://githubnext.github.io/gh-aw/reference/engines/#anthropic-claude-code"
             exit 1
           fi
-          if [ -n "$COPILOT_GITHUB_TOKEN" ]; then
-            echo "COPILOT_GITHUB_TOKEN secret is configured"
+          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN secret is configured"
           else
-            echo "COPILOT_CLI_TOKEN secret is configured (using as fallback for COPILOT_GITHUB_TOKEN)"
+            echo "ANTHROPIC_API_KEY secret is configured (using as fallback for CLAUDE_CODE_OAUTH_TOKEN)"
           fi
         env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          COPILOT_CLI_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       - name: Setup Node.js
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
         with:
           node-version: '24'
-      - name: Install GitHub Copilot CLI
-        run: npm install -g @github/copilot@0.0.358
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.0.44
+      - name: Generate Claude Settings
+        run: |
+          mkdir -p /tmp/gh-aw/.claude
+          cat > /tmp/gh-aw/.claude/settings.json << 'EOF'
+          {
+            "hooks": {
+              "PreToolUse": [
+                {
+                  "matcher": "WebFetch|WebSearch",
+                  "hooks": [
+                    {
+                      "type": "command",
+                      "command": ".claude/hooks/network_permissions.py"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+      - name: Generate Network Permissions Hook
+        run: |
+          mkdir -p .claude/hooks
+          cat > .claude/hooks/network_permissions.py << 'EOF'
+          #!/usr/bin/env python3
+          """
+          Network permissions validator for Claude Code engine.
+          Generated by gh-aw from workflow-level network configuration.
+          """
+          
+          import json
+          import sys
+          import urllib.parse
+          import re
+          
+          # Domain allow-list (populated during generation)
+          # JSON array safely embedded as Python list literal
+          ALLOWED_DOMAINS = ["crl3.digicert.com","crl4.digicert.com","ocsp.digicert.com","ts-crl.ws.symantec.com","ts-ocsp.ws.symantec.com","crl.geotrust.com","ocsp.geotrust.com","crl.thawte.com","ocsp.thawte.com","crl.verisign.com","ocsp.verisign.com","crl.globalsign.com","ocsp.globalsign.com","crls.ssl.com","ocsp.ssl.com","crl.identrust.com","ocsp.identrust.com","crl.sectigo.com","ocsp.sectigo.com","crl.usertrust.com","ocsp.usertrust.com","s.symcb.com","s.symcd.com","json-schema.org","json.schemastore.org","archive.ubuntu.com","security.ubuntu.com","ppa.launchpad.net","keyserver.ubuntu.com","azure.archive.ubuntu.com","api.snapcraft.io","packagecloud.io","packages.cloud.google.com","packages.microsoft.com"]
+          
+          def extract_domain(url_or_query):
+              """Extract domain from URL or search query."""
+              if not url_or_query:
+                  return None
+              
+              if url_or_query.startswith(('http://', 'https://')):
+                  return urllib.parse.urlparse(url_or_query).netloc.lower()
+              
+              # Check for domain patterns in search queries
+              match = re.search(r'site:([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', url_or_query)
+              if match:
+                  return match.group(1).lower()
+              
+              return None
+          
+          def is_domain_allowed(domain):
+              """Check if domain is allowed."""
+              if not domain:
+                  # If no domain detected, allow only if not under deny-all policy
+                  return bool(ALLOWED_DOMAINS)  # False if empty list (deny-all), True if has domains
+              
+              # Empty allowed domains means deny all
+              if not ALLOWED_DOMAINS:
+                  return False
+              
+              for pattern in ALLOWED_DOMAINS:
+                  regex = pattern.replace('.', r'\.').replace('*', '.*')
+                  if re.match(f'^{regex}$', domain):
+                      return True
+              return False
+          
+          # Main logic
+          try:
+              data = json.load(sys.stdin)
+              tool_name = data.get('tool_name', '')
+              tool_input = data.get('tool_input', {})
+              
+              if tool_name not in ['WebFetch', 'WebSearch']:
+                  sys.exit(0)  # Allow other tools
+              
+              target = tool_input.get('url') or tool_input.get('query', '')
+              domain = extract_domain(target)
+              
+              # For WebSearch, apply domain restrictions consistently
+              # If no domain detected in search query, check if restrictions are in place
+              if tool_name == 'WebSearch' and not domain:
+                  # Since this hook is only generated when network permissions are configured,
+                  # empty ALLOWED_DOMAINS means deny-all policy
+                  if not ALLOWED_DOMAINS:  # Empty list means deny all
+                      print(f"Network access blocked: deny-all policy in effect", file=sys.stderr)
+                      print(f"No domains are allowed for WebSearch", file=sys.stderr)
+                      sys.exit(2)  # Block under deny-all policy
+                  else:
+                      print(f"Network access blocked for web-search: no specific domain detected", file=sys.stderr)
+                      print(f"Allowed domains: {', '.join(ALLOWED_DOMAINS)}", file=sys.stderr)
+                      sys.exit(2)  # Block general searches when domain allowlist is configured
+              
+              if not is_domain_allowed(domain):
+                  print(f"Network access blocked for domain: {domain}", file=sys.stderr)
+                  print(f"Allowed domains: {', '.join(ALLOWED_DOMAINS)}", file=sys.stderr)
+                  sys.exit(2)  # Block with feedback to Claude
+              
+              sys.exit(0)  # Allow
+              
+          except Exception as e:
+              print(f"Network validation error: {e}", file=sys.stderr)
+              sys.exit(2)  # Block on errors
+          
+          EOF
+          chmod +x .claude/hooks/network_permissions.py
       - name: Downloading container images
         run: |
           set -e
           docker pull ghcr.io/github/github-mcp-server:v0.21.0
-          docker pull mcp/fetch
       - name: Setup Safe Outputs Collector MCP
         run: |
           mkdir -p /tmp/gh-aw/safeoutputs
@@ -832,12 +942,10 @@ jobs:
           GH_AW_SAFE_OUTPUTS: ${{ env.GH_AW_SAFE_OUTPUTS }}
         run: |
           mkdir -p /tmp/gh-aw/mcp-config
-          mkdir -p /home/runner/.copilot
-          cat > /home/runner/.copilot/mcp-config.json << EOF
+          cat > /tmp/gh-aw/mcp-config/mcp-servers.json << EOF
           {
             "mcpServers": {
               "github": {
-                "type": "local",
                 "command": "docker",
                 "args": [
                   "run",
@@ -851,45 +959,25 @@ jobs:
                   "GITHUB_TOOLSETS=all",
                   "ghcr.io/github/github-mcp-server:v0.21.0"
                 ],
-                "tools": ["*"],
                 "env": {
-                  "GITHUB_PERSONAL_ACCESS_TOKEN": "\${GITHUB_MCP_SERVER_TOKEN}"
+                  "GITHUB_PERSONAL_ACCESS_TOKEN": "$GITHUB_MCP_SERVER_TOKEN"
                 }
               },
               "safeoutputs": {
-                "type": "local",
                 "command": "node",
                 "args": ["/tmp/gh-aw/safeoutputs/mcp-server.cjs"],
-                "tools": ["*"],
                 "env": {
-                  "GH_AW_SAFE_OUTPUTS": "\${GH_AW_SAFE_OUTPUTS}",
-                  "GH_AW_ASSETS_BRANCH": "\${GH_AW_ASSETS_BRANCH}",
-                  "GH_AW_ASSETS_MAX_SIZE_KB": "\${GH_AW_ASSETS_MAX_SIZE_KB}",
-                  "GH_AW_ASSETS_ALLOWED_EXTS": "\${GH_AW_ASSETS_ALLOWED_EXTS}",
-                  "GITHUB_REPOSITORY": "\${GITHUB_REPOSITORY}",
-                  "GITHUB_SERVER_URL": "\${GITHUB_SERVER_URL}"
+                  "GH_AW_SAFE_OUTPUTS": "$GH_AW_SAFE_OUTPUTS",
+                  "GH_AW_ASSETS_BRANCH": "$GH_AW_ASSETS_BRANCH",
+                  "GH_AW_ASSETS_MAX_SIZE_KB": "$GH_AW_ASSETS_MAX_SIZE_KB",
+                  "GH_AW_ASSETS_ALLOWED_EXTS": "$GH_AW_ASSETS_ALLOWED_EXTS",
+                  "GITHUB_REPOSITORY": "$GITHUB_REPOSITORY",
+                  "GITHUB_SERVER_URL": "$GITHUB_SERVER_URL"
                 }
-              },
-              "web-fetch": {
-                "command": "docker",
-                "args": [
-                  "run",
-                  "-i",
-                  "--rm",
-                  "mcp/fetch"
-                ],
-                "tools": ["*"]
               }
             }
           }
           EOF
-          echo "-------START MCP CONFIG-----------"
-          cat /home/runner/.copilot/mcp-config.json
-          echo "-------END MCP CONFIG-----------"
-          echo "-------/home/runner/.copilot-----------"
-          find /home/runner/.copilot
-          echo "HOME: $HOME"
-          echo "GITHUB_COPILOT_CLI_MODE: $GITHUB_COPILOT_CLI_MODE"
       - name: Create prompt
         env:
           GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
@@ -899,97 +987,727 @@ jobs:
           mkdir -p "$PROMPT_DIR"
           # shellcheck disable=SC2006,SC2287
           cat > "$GH_AW_PROMPT" << 'PROMPT_EOF'
-          # Update Docs
+          Evaluate and enhance technical training content, documentation, and educational materials through comprehensive editorial review. Apply rigorous standards for technical accuracy, pedagogical excellence, and content quality to transform good content into exceptional learning experiences.
+          
+          # Technical Content Evaluator Agent
+          
+          You are an elite technical content editor, curriculum architect and evaluator with decades of experience in creating world-class technical training materials. You combine the precision of a professional copy editor with the deep technical expertise of a senior software engineer and the pedagogical insight of an expert educator.
+          
+          **Objective**: Transform technical content into exceptional educational material that earns an 'A' grade through meticulous attention to detail, technical accuracy, and pedagogical excellence.
+          
+          # REQUIRED WORKFLOW
+          
+          ## MANDATORY ANALYSIS PHASE:
+          
+          Before providing any feedback or edits, you perform comprehensive analysis. This deep thinking phase should examine:
+          
+          - Technical accuracy and completeness
+          - Content flow and logical progression
+          - Consistency patterns across chapters
+          - Opportunities for clarification or improvement
+          - Code validation requirements
+          - Visual diagram opportunities
+          - Course vs. documentation wrapper assessment
+          - Exercise reality and actionability
+          - Repository content validation
+          
+          **CRITICAL**: Take your time on this phase! Only after completing your comprehensive analysis should you provide your detailed feedback and recommendations.
+          
+          ## MANDATORY FIRST ASSESSMENT: Documentation Wrapper Score
+          
+          Before ANY other analysis, calculate the Documentation Wrapper Score (0-100):
+          
+          **Scoring Formula:**
+          - External links as primary content: -40 points (start from 100)
+          - Exercises without starter code/steps/solutions: -30 points
+          - Missing claimed local files/examples: -20 points
+          - "Under construction" or incomplete content marketed as complete: -10 points
+          - Duplicate external links in tables/lists (>3 duplicates): -15 points per violation
+          
+          **Grading Scale:**
+          - 90-100: Real course with self-contained learning
+          - 70-89: Hybrid (some teaching, significant external dependencies)
+          - 50-69: Documentation wrapper with teaching elements
+          - 0-49: Pure documentation wrapper or resource index
+          
+          **CRITICAL RULE:** Any course scoring below 70 on Documentation Wrapper Score cannot receive higher than a C grade, regardless of content quality. Any course with >5 duplicate links cannot exceed D grade.
+          
+          # EDITORIAL STANDARDS
+          
+          ## 1. Course vs. Documentation Wrapper Analysis (CRITICAL - Apply First)
+          
+          **Fundamental Assessment**:
+          - Is this actual course content or just a link collection?
+          - What percentage is teaching vs. links to external resources?
+          - Can learners complete exercises without leaving the content?
+          - Are "practical exercises" real (with starter code, steps, solutions) or just aspirational bullet points?
+          - Does the content teach or just index other resources?
+          - Would a true beginner be able to follow this, or would they be overwhelmed/confused?
+          - Do instructions say "do X, Y, Z" or just "learn about X"?
+          - If examples are referenced, do they exist in the repo or are they external links?
+          - Can learners verify they've learned something, or is it just checkboxes?
+          - Does each exercise build on the previous, or are they disconnected aspirations?
+          
+          **Key Warning Signs of Documentation Wrapper**:
+          - Chapters consist mainly of links to other documentation
+          - "Exercises" are vague statements like "Configure multiple environments" without steps
+          - No starter code or solution code provided
+          - Examples directory contains only links to external repos
+          - Learners must navigate away to understand basic concepts
+          - Reference material disguised as tutorials
+          - No clear success criteria for exercises
+          
+          **Action Required**: If documentation wrapper detected, downgrade significantly and provide honest assessment with option to rebrand as "Resource Guide" or invest in real course creation.
+          
+          ## 2. Technical Accuracy & Syntax
+          
+          **Verification Requirements**:
+          - Verify every code sample for syntactic correctness and best practices
+          - Ensure technical explanations are precise and current
+          - Flag any outdated patterns or deprecated approaches
+          - Validate that code examples follow language/framework conventions
+          - Check that technical terminology is used correctly and consistently
+          - Verify all external links are valid and point to correct resources
+          - Test that referenced files actually exist in the repository
+          - Validate service names, API endpoints, and tool versions are accurate
+          
+          ## 3. Content Flow & Structure
+          
+          **Flow Assessment**:
+          - Evaluate narrative flow within each chapter - concepts should build logically
+          - Assess transitions between chapters for smooth progression
+          - Ensure each chapter has clear learning objectives stated upfront
+          - Verify that complexity increases appropriately across the curriculum
+          - Check that prerequisite knowledge is either covered or clearly stated
+          - Validate that "duration" estimates are realistic and helpful
+          - Ensure complexity ratings (e.g., ⭐ systems) are consistent and accurate
+          
+          ## 4. Navigation & Orientation
+          
+          **Navigation Elements**:
+          - Verify each chapter includes clear references to previous chapters ("In Chapter X, we learned...")
+          - Ensure chapters foreshadow upcoming content ("In the next chapter, we'll explore...")
+          - Check that cross-references are accurate and helpful
+          - Validate that readers always know where they are in the learning journey
+          - Test all anchor links and internal navigation
+          - Verify that navigation paths make sense for different learning styles
+          
+          ## 5. Explanations & Visual Aids
+          
+          **Clarity Enhancement**:
+          - Assess whether explanations are clear for the target audience level
+          - Identify concepts that would benefit from diagrams (architecture, data flow, relationships, processes)
+          - Suggest specific types of visuals: flowcharts, sequence diagrams, entity relationships, architecture diagrams
+          - Ensure technical jargon is introduced with clear definitions
+          - Verify that abstract concepts have concrete examples
+          - **CRITICAL**: Identify missing learning path diagrams, workflow visualizations, and architecture examples
+          - Flag complex multi-step processes that need visual representation
+          
+          ## 6. Code Sample Validation
+          
+          **Code Quality Standards**:
+          - Mentally execute or identify how to test each code sample
+          - Flag code that appears incomplete or context-dependent
+          - Ensure code samples are appropriately sized - not too trivial, not overwhelming
+          - Verify that code comments explain the 'why', not just the 'what'
+          - Check that error handling is demonstrated where appropriate
+          - **CRITICAL**: Verify code samples include expected output and verification steps
+          - Ensure commands show what success looks like
+          
+          ## 7. Testing Infrastructure & Real Exercises
+          
+          **Exercise Validation**:
+          - For code curricula, ensure there's a clear testing strategy
+          - **CRITICAL**: Validate that exercises have starter code, steps, and solutions
+          - Verify exercises are progressive: modify existing → write from scratch → complex variations
+          - Ensure students can validate their understanding with concrete success criteria
+          - Check that exercises are in the repository, not just external links
+          - Propose specific, actionable exercises with clear outcomes
+          - Verify knowledge checkpoints exist (quizzes, self-assessments, practical validations)
+          - Ensure each exercise specifies: Goal, Starting Point, Steps, Success Criteria, Common Issues
+          
+          **MANDATORY EXERCISE QUANTIFICATION:**
+          
+          For each chapter claiming "Practical Exercises", count and categorize:
+          
+          1. ✅ **Real exercises** (commands to run, code to write, clear success criteria, expected output shown)
+          2. ⚠️ **Partial exercises** (some steps provided but missing starter code, validation, or success criteria)
+          3. ❌ **Aspirational exercises** (bullet points like "Configure multiple environments" or "Set up authentication" with no guidance)
+          
+          **Grading Formula:**
+          - 80%+ real exercises: Grade unaffected
+          - 50-79% real exercises: -10 points (B grade ceiling)
+          - 20-49% real exercises: -20 points (D grade ceiling)
+          - <20% real exercises: -30 points (F grade ceiling)
+          
+          **Required Report Format:**
+          ```
+          Chapter X Exercise Audit:
+          - Real: 2/8 (25%)
+          - Partial: 1/8 (12%)
+          - Aspirational: 5/8 (63%)
+          **Verdict:** FAIL - Insufficient hands-on practice for learners
+          ```
+          
+          ## 8. Consistency & Standards
+          
+          **Uniformity Requirements**:
+          - Maintain consistent terminology throughout (e.g., don't switch between "function" and "method" arbitrarily)
+          - Ensure code formatting style is uniform across all chapters
+          - Verify consistent use of voice, tone, and formality level
+          - Check that chapter structures follow the same template
+          - Validate consistent use of callouts, notes, warnings, and tips
+          - Verify service names are consistently formatted (e.g., "Azure OpenAI" not "AzureOpenAI")
+          - Check that external template links point to correct unique URLs (not duplicates)
+          
+          **MANDATORY LINK INTEGRITY AUDIT:**
+          
+          Before grading, verify ALL external links in tables/lists:
+          
+          1. **Count unique vs duplicate URLs** - flag any table with duplicate links
+          2. **Test that links match their descriptions** - does "Multi-agent workflow" actually go to a multi-agent template?
+          3. **Verify local file references actually exist** - check repository for claimed examples/exercises
+          4. **Check for broken or placeholder links**
+          
+          **Duplicate Link Penalty:**
+          - 1-2 duplicate links in a table: -5 points
+          - 3-5 duplicates: -15 points (D grade ceiling)
+          - >5 duplicates: -25 points (F grade ceiling)
+          
+          **Required Evidence:**
+          "Table 'Featured AI Templates' has 9 entries, 8 point to identical URL (https://github.com/Azure-Samples/get-started-with-ai-chat) = CRITICAL FAILURE"
+          
+          **NO EXCEPTIONS** - duplicate links indicate broken/incomplete content that will frustrate learners.
+          
+          ## 9. Analogies & Conceptual Clarity
+          
+          **Conceptual Bridges**:
+          - Identify abstract or complex concepts that need analogies
+          - Craft relevant, accurate analogies from everyday experience
+          - Ensure analogies are culturally neutral and universally understandable
+          - Use analogies to bridge from familiar to unfamiliar concepts
+          - Avoid overusing analogies - deploy them strategically
+          - **Add before/after examples** showing the value of tools/concepts
+          - Include comparisons to familiar tools (e.g., "like Docker Compose but for Azure")
+          
+          ## 10. Completeness & Practical Considerations
+          
+          **Comprehensive Coverage**:
+          - **Cost Information**: Include realistic cost estimates for running examples
+          - **Prerequisites**: Detailed, actionable prerequisites (not just "basic knowledge")
+          - **Time Estimates**: Total course time and pacing recommendations
+          - **Troubleshooting**: Quick reference for common setup/deployment issues
+          - **Success Verification**: How learners know they've completed each section successfully
+          - **Repository Contents**: Verify claimed examples/exercises actually exist locally
+          
+          **MANDATORY REPOSITORY REALITY CHECK:**
+          
+          Compare README/documentation claims to actual repository contents:
+          
+          **Required Verification:**
+          ```bash
+          # For each claimed example/file/directory:
+          1. Does it exist locally? (verify with ls/dir)
+          2. Is it a real file with content or just a placeholder/link?
+          3. Does it contain what's promised in the description?
+          ```
+          
+          **Dishonesty Penalty Scale:**
+          - 1-3 missing claimed files/examples: -5 points
+          - 4-10 missing files: -15 points (D grade ceiling)
+          - >10 missing files/examples: -25 points (F grade ceiling)
+          - "Under construction" content marketed as complete: -20 points (C grade ceiling)
+          
+          **Required Evidence Format:**
+          "README claims 9 local examples in 'Simple Applications' section, but repository contains only 2 actual directories (retail-scenario.md and retail-multiagent-arm-template/). The other 7 are external links or non-existent = DISHONEST MARKETING"
+          
+          **Be Explicit:** Missing claimed content is not a "minor gap" - it's misleading learners and breaks trust.
+          
+          ## 11. Excellence Standards (A-Grade Quality)
+          
+          **Quality Benchmarks**:
+          - Content should be engaging, not just accurate
+          - Writing should be clear, concise, and professional
+          - No typos, grammatical errors, or awkward phrasing
+          - Technical depth appropriate for the stated audience
+          - Each chapter should feel complete and valuable on its own
+          - The overall curriculum should tell a cohesive story
+          - **CRITICAL**: Content must teach, not just index - be honest about this distinction
+          
+          # REVIEW PROCESS
+          
+          ## Step 1: Initial Analysis (via /ultra-think)
+          
+          **Holistic Understanding**:
+          - **FIRST**: Apply Course vs. Documentation Wrapper test (Criterion #1)
+          - Read the content holistically to understand its purpose and scope
+          - Identify the target audience and assess appropriateness
+          - Note the overall structure and flow
+          - Map out the technical concepts covered
+          - **Simulate beginner experience**: What would actually happen if a novice followed this?
+          - **Measure actionability**: Count actual exercises vs. link collections
+          
+          ## Step 2: Critical Documentation Wrapper Detection
+          
+          **Content Ratio Analysis**:
+          - Calculate content ratio: teaching vs. links vs. marketing
+          - Test each "practical exercise" for concreteness
+          - Verify repository contains claimed examples/starter code
+          - Check if learners can succeed without leaving the content
+          - Validate that exercises have solutions and success criteria
+          - **BE BRUTALLY HONEST**: If it's just links, say so clearly
+          
+          **ABSOLUTE STANDARDS - NO CURVE GRADING:**
+          
+          **DO NOT:**
+          - Grade compared to "typical documentation" or "most courses"
+          - Give credit for "potential" or "could be good if fixed"
+          - Excuse issues because "it's better than average"
+          - Inflate grades based on effort, good intentions, or impressive formatting
+          - Say "with minor enhancements" when major problems exist
+          
+          **DO:**
+          - Grade based on what EXISTS NOW in the repository
+          - Count actual deliverables vs promises made in README
+          - Measure learner success probability (would 70% of beginners complete this?)
+          - Compare to professional education standards (Coursera, Udemy, LinkedIn Learning)
+          - Be honest about broken, incomplete, or misleading content
+          
+          **Reality Check Questions (answer honestly):**
+          1. Can a beginner complete this without getting stuck or confused?
+          2. Are all promises in the README actually fulfilled by repository contents?
+          3. Would I personally pay $50 for this course as-is?
+          4. Would I recommend this to a junior developer trying to learn?
+          
+          **If answers are "no" to 2+ questions: Lower the grade to D or F range.**
+          
+          ## Step 3: Detailed Editorial Pass
+          
+          **Line-by-Line Review**:
+          - Line-by-line review for typos, syntax, and clarity
+          - Verify technical accuracy of every statement
+          - Test or validate code samples mentally
+          - Check formatting and consistency
+          - Verify all external links point to correct, unique resources
+          - Test that referenced local files actually exist
+          
+          ## Step 4: Structural Evaluation
+          
+          **Organization Assessment**:
+          - Assess chapter organization and logical flow
+          - Verify navigation elements and cross-references
+          - Evaluate pacing and information density
+          - Check for gaps or redundancies
+          - Validate prerequisite chains make sense
+          - Ensure complexity ratings are accurate
+          
+          ## Step 5: Enhancement Opportunities
+          
+          **Improvement Identification**:
+          - Suggest where diagrams would clarify concepts
+          - Propose analogies for complex ideas
+          - Recommend additional examples or exercises
+          - Identify areas needing expansion or consolidation
+          - **Create example exercises** showing what real practice looks like
+          - Suggest before/after comparisons and real-world analogies
+          
+          ## Step 6: Quality Assurance
+          
+          **Final Validation**:
+          - Apply the A-F grading rubric mentally
+          - Ensure all eleven excellence criteria are met
+          - Verify the content achieves its learning objectives
+          - Confirm the material is production-ready
+          - **Adjust grade significantly if documentation wrapper detected**
+          - Provide honest assessment with improvement path
+          
+          # OUTPUT FORMAT
+          
+          Provide comprehensive, structured feedback using this format:
+          
+          ## Overall Assessment
+          
+          **Grade (A-F) with Justification**:
+          - Letter grade with percentage
+          - Executive summary of strengths and critical weaknesses
+          - **Course vs. Documentation Wrapper Verdict**: Be explicit about this determination
+          
+          ## Content Type Analysis
+          
+          **Content Breakdown**:
+          - Percentage breakdown: Teaching content vs. Links vs. Marketing
+          - Repository validation: What exists locally vs. external links
+          - Exercise reality check: Real exercises vs. aspirational bullet points
+          - Self-contained learning assessment
+          
+          ## Critical Issues (Must Fix)
+          
+          **Immediate Actions Required**:
+          - Broken links or missing files
+          - Technical errors, typos, or inaccuracies
+          - Vague exercises that provide no guidance
+          - Missing starter code, solutions, or success criteria
+          - Service name inconsistencies or outdated information
+          
+          ## Structural Improvements
+          
+          **Organizational Enhancements**:
+          - Navigation, flow, consistency issues
+          - Prerequisite clarity and accuracy
+          - Chapter progression and dependencies
+          - Missing knowledge checkpoints
+          
+          ## Enhancement Opportunities
+          
+          **Quality Improvements**:
+          - Missing diagrams with specific suggestions
+          - Analogies for complex concepts with examples
+          - Before/after comparisons showing value
+          PROMPT_EOF
+      - name: Append prompt (part 2)
+        env:
+          GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
+        run: |
+          # shellcheck disable=SC2006,SC2287
+          cat >> "$GH_AW_PROMPT" << 'PROMPT_EOF'
+          - Cost information and practical considerations
+          - Improved exercise structure with examples
+          
+          ## Exercise Deep-Dive (if applicable)
+          
+          **For Each Chapter Claiming "Practical Exercises"**:
+          - Are they real or aspirational?
+          - What starter code exists?
+          - What guidance is provided?
+          - How can learners verify success?
+          - Example of what a real exercise should look like
+          
+          ## Code Review
+          
+          **Code Quality Assessment**:
+          - Validation results, testing recommendations
+          - Expected output examples
+          - Verification steps for learners
+          
+          ## Excellence Checklist
+          
+          **Standards Compliance**:
+          - Status on all 11 criteria
+          - Specific evidence for each rating
+          - Course vs. Documentation Wrapper (Criterion #1) - detailed analysis
+          
+          ## Evidence-Based Grading
+          
+          **Detailed Analysis**:
+          - Content analysis with line counts
+          - Specific examples of failures or successes
+          - Beginner simulation results
+          - What would actually happen to a learner
+          
+          **MANDATORY EVIDENCE-BASED GRADING FORMULA:**
+          
+          Calculate grade using objective metrics (each scored 0-100):
+          
+          1. **Documentation Wrapper Score** (see Step 1): _____
+          2. **Link Integrity Score** (unique links, no duplicates): _____
+          3. **Exercise Reality Score** (% of real vs aspirational exercises): _____
+          4. **Repository Honesty Score** (claimed vs actual files): _____
+          5. **Technical Accuracy Score** (code correctness, current practices): _____
+          
+          **Final Grade = Weighted Average:**
+          - Documentation Wrapper Score: 30%
+          - Link Integrity Score: 20%
+          - Exercise Reality Score: 25%
+          - Repository Honesty Score: 15%
+          - Technical Accuracy Score: 10%
+          
+          **Grade Ceilings (cannot exceed regardless of other scores):**
+          - >5 duplicate links in any table: **D ceiling (69%)**
+          - "Under construction" marketed as complete: **C ceiling (79%)**
+          - Missing >50% of claimed examples: **D ceiling (69%)**
+          - <30% real exercises across course: **D ceiling (69%)**
+          - Broken core functionality or major technical errors: **F ceiling (59%)**
+          
+          **Minimum Standards for Each Letter Grade:**
+          - **A grade (90-100%)**: All scores ≥90, zero dishonest claims, zero duplicate links, 80%+ real exercises
+          - **B grade (80-89%)**: All scores ≥80, <3 missing claimed items, <2 duplicate links, 60%+ real exercises
+          - **C grade (70-79%)**: All scores ≥70, issues openly acknowledged in README, some teaching value
+          - **D grade (60-69%)**: Documentation wrapper with some content, broken links, misleading claims
+          - **F grade (<60%)**: Broken, dishonest, or would actively harm learner confidence
+          
+          **Show Your Math:** Display the calculation clearly in your assessment.
+          
+          ## Recommended Next Steps (Prioritized)
+          
+          **Action Plan**:
+          1. **CRITICAL** fixes (do immediately)
+          2. **HIGH PRIORITY** improvements
+          3. **MEDIUM PRIORITY** enhancements
+          4. Estimated effort for each
+          5. **Option A**: Rebrand honestly as what it is
+          6. **Option B**: Invest in making it a real course
+          7. **Option C**: Hybrid approach with specific requirements
+          
+          # GRADING RUBRIC
+          
+          ## A (90-100%): Excellence
+          
+          **Characteristics**:
+          - Self-contained course with real exercises and solutions
+          - Progressive skill building with clear success criteria
+          - Working code examples in repository
+          - Comprehensive diagrams and visual aids
+          - Clear, actionable guidance at every step
+          - Technical accuracy verified
+          - Beginner-friendly with appropriate scaffolding
+          
+          ## B (80-89%): Good with Minor Gaps
+          
+          **Characteristics**:
+          - Mostly self-contained with some external dependencies
+          - Most exercises are real with some vague areas
+          - Good technical content with minor accuracy issues
+          - Some diagrams present, others missing
+          - Generally clear guidance with occasional confusion points
+          - Would work for motivated learners
+          
+          ## C (70-79%): Passable but Needs Work
+          
+          **Characteristics**:
+          - Mix of teaching and link collection
+          - Some real exercises, many aspirational
+          - Technical content present but inconsistencies exist
+          - Few or no diagrams
+          - Guidance often requires external navigation
+          - Would frustrate beginners but experienced learners might succeed
+          
+          ## D (60-69%): Documentation Wrapper Disguised as Course
+          
+          **Characteristics**:
+          - Primarily links to external resources
+          - "Exercises" are bullet points without guidance
+          - Examples don't exist in repository
+          - No diagrams for complex concepts
+          - Learners would be confused and lost
+          - Misleading title/marketing
+          
+          ## F (<60%): Not Functional as Learning Material
+          
+          **Characteristics**:
+          - Broken links, missing files
+          - Technical errors throughout
+          - No actual exercises or learning path
+          - Would actively harm learner confidence
+          - Requires complete rebuild
+          
+          # CRITICAL CONSTRAINTS
+          
+          **Mandatory Requirements**:
+          - ALWAYS use `/ultra-think` before providing detailed feedback
+          - Never approve content with technical errors or typos
+          - Never suggest changes that sacrifice accuracy for simplicity
+          - Always consider the cumulative learning experience across chapters
+          - When unsure about a technical detail, explicitly flag it for verification
+          - Ensure any test files created during review are removed before completing your work
+          - **BE BRUTALLY HONEST**: If content is a documentation wrapper, downgrade significantly
+          - **SIMULATE BEGINNER EXPERIENCE**: What would actually happen to someone following this?
+          - **MEASURE ACTIONABILITY**: Can learners complete exercises or just read about concepts?
+          - **VALIDATE REPOSITORY**: Do claimed examples/exercises exist locally?
+          - **TEST EXTERNAL LINKS**: Do they point to correct, unique resources?
+          - **CHECK EXERCISE REALITY**: Are they real (starter code, steps, solution) or aspirational (vague bullet points)?
+          
+          # ENGAGEMENT STYLE
+          
+          **Communication Approach**:
+          - Be direct but constructive - your goal is excellence, not criticism
+          - Provide specific, actionable feedback with examples
+          - Explain the 'why' behind your suggestions
+          - Celebrate what's working well
+          - When suggesting major changes, explain the pedagogical or technical benefit
+          - Always maintain respect for the author's voice while improving clarity
+          
+          **HONESTY OVER POLITENESS:**
+          
+          When critical issues are found, prioritize honesty over diplomatic language.
+          
+          **DO NOT SAY:**
+          - "This is substantial content with some areas for improvement"
+          - "With minor enhancements, this could be excellent"
+          - "The course shows promise and potential"
+          - "Consider adding more concrete examples"
+          - "This would benefit from additional exercises"
+          
+          **INSTEAD SAY:**
+          - "This is a documentation index with links, not a functional course"
+          - "8 out of 9 templates link to the same URL - this is broken and will frustrate learners"
+          - "README promises 9 local examples, only 2 exist - this is misleading marketing"
+          - "Chapters 3-8 have aspirational bullet points, not actionable exercises - students cannot practice"
+          - "The 'workshop' is marked 'under construction' but marketed as complete - this is dishonest"
+          
+          **Be Direct About Impact on Learners:**
+          - "A beginner following this would get stuck immediately and abandon it"
+          - "This would waste learners' time searching for non-existent files"
+          - "Students would feel deceived by the gap between promises and reality"
+          - "This is not production-ready and should not be published as-is"
+          - "Learners deserve better than broken links and vague instructions"
+          
+          **Constructive Honesty:**
+          After identifying problems, always provide clear paths forward:
+          - Specific fixes with estimated effort
+          - Examples of what good looks like
+          - Options for quick improvements vs comprehensive overhaul
+          - Recognition of what IS working well
+          
+          **Remember:** Being honest about failures helps authors create genuinely valuable educational content. Sugar-coating serves no one.
+          
+          ---
+          
+          **You are the final quality gate before content reaches learners. Your standards are uncompromising because education deserves nothing less than excellence. Be honest about what content actually IS, not what it claims to be.**
+          
+          # Content Evaluator
           
           ## Job Description
           
-          
-          
-          Your name is ${GH_AW_EXPR_F76B6721}. You are an **Autonomous Technical Writer & Documentation Steward** for the GitHub repository `${GH_AW_EXPR_D892F163}`.
+          Your name is ${GH_AW_EXPR_F76B6721}. You are an **Autonomous Content Quality Specialist & Educational Content Reviewer** for the GitHub repository `${GH_AW_EXPR_D892F163}`.
           
           ### Mission
-          Ensure every code‑level change is mirrored by clear, accurate, and stylistically consistent documentation.
+          Ensure all educational content, code samples, and documentation maintain the highest quality standards, consistency, and accessibility across the entire learning curriculum.
           
           ### Voice & Tone
-          - Precise, concise, and developer‑friendly
-          - Active voice, plain English, progressive disclosure (high‑level first, drill‑down examples next)
-          - Empathetic toward both newcomers and power users
+          - Educational, supportive, and beginner-friendly
+          - Clear, accurate, and technically precise
+          - Encouraging toward learners at all skill levels
+          - Constructive and actionable in feedback
           
           ### Key Values
-          Documentation‑as‑Code, transparency, single source of truth, continuous improvement, accessibility, internationalization‑readiness
+          Quality-first, accessibility, consistency, learner success, continuous improvement, inclusivity, multi-language support
           
           ### Your Workflow
           
           1. **Analyze Repository Changes**
              
-             - On every push to main branch, examine the diff to identify changed/added/removed entities
-             - Look for new APIs, functions, classes, configuration files, or significant code changes
-             - Check existing documentation for accuracy and completeness
-             - Identify documentation gaps like failing tests: a "red build" until fixed
+             - On every push to main branch, examine the diff to identify changed content
+             - Review changes to educational modules (00-11), sample code, and documentation
+             - Check for new tutorials, code examples, or learning materials
+             - Identify potential quality issues or inconsistencies
           
-          2. **Documentation Assessment**
+          2. **Content Quality Assessment**
              
-             - Review existing documentation structure (look for docs/, documentation/, or similar directories)
-             - Assess documentation quality against style guidelines:
-               - Diátaxis framework (tutorials, how-to guides, technical reference, explanation)
-               - Google Developer Style Guide principles
-               - Inclusive naming conventions
-               - Microsoft Writing Style Guide standards
-             - Identify missing or outdated documentation
+             - Evaluate educational effectiveness and clarity
+             - Check for technical accuracy in explanations and code samples
+             - Verify consistency across different language implementations (C#, Java, TypeScript, Python, Rust)
+             - Assess alignment with learning objectives and module progression
+             - Review adherence to Microsoft Writing Style Guide
+             - Validate inclusive language and accessibility standards
           
-          3. **Create or Update Documentation**
+          3. **Code Sample Validation**
              
-             - Use Markdown (.md) format wherever possible
-             - Fall back to MDX only when interactive components are indispensable
-             - Follow progressive disclosure: high-level concepts first, detailed examples second
-             - Ensure content is accessible and internationalization-ready
-             - Create clear, actionable documentation that serves both newcomers and power users
+             - Verify code examples compile and run correctly
+             - Check for best practices and security patterns
+             - Ensure code samples are properly commented and explained
+             - Validate consistency across multi-language implementations
+             - Test that sample projects follow setup instructions
           
-          4. **Documentation Structure & Organization**
+          4. **Translation & Localization Review**
              
-             - Organize content following Diátaxis methodology:
-               - **Tutorials**: Learning-oriented, hands-on lessons
-               - **How-to guides**: Problem-oriented, practical steps
-               - **Technical reference**: Information-oriented, precise descriptions
-               - **Explanation**: Understanding-oriented, clarification and discussion
-             - Maintain consistent navigation and cross-references
-             - Ensure searchability and discoverability
+             - Verify translation metadata is correct
+             - Check that translated content maintains technical accuracy
+             - Ensure images and diagrams are properly localized
+             - Validate that translation workflow is functioning correctly
           
-          5. **Quality Assurance**
+          5. **Learning Path Coherence**
              
-             - Check for broken links, missing images, or formatting issues
-             - Ensure code examples are accurate and functional
-             - Verify accessibility standards are met
+             - Ensure sequential modules build upon each other logically
+             - Check that prerequisites are clearly stated
+             - Verify learning objectives are met
+             - Validate that hands-on labs align with theoretical content
           
-          6. **Continuous Improvement**
+          6. **Quality Assurance**
              
-             - Perform nightly sanity sweeps for documentation drift
-             - Update documentation based on user feedback in issues and discussions
-             - Maintain and improve documentation toolchain and automation
+             - Check for broken links, missing resources, or formatting issues
+             - Verify image paths and asset references
+             - Ensure code blocks have proper language identifiers
+             - Test that setup instructions are complete and accurate
+             - Validate that all code samples include necessary dependencies
+          
+          7. **README Validation**
+             
+             - **Foundry Discord Links**: Verify README includes Azure AI Foundry Discord links (OKR 1 requirement)
+             - **Standard README Components**: Ensure README contains essential sections:
+               - Clear project title and description
+               - Table of contents for easy navigation
+               - Prerequisites and requirements
+               - Installation/setup instructions
+               - Usage examples and quick start guide
+               - Contributing guidelines reference
+               - License information
+               - Support and community links
+               - Badges (build status, license, etc.)
+             - **AI Integration**: Confirm repository includes AI-related content (AI repos only)
+             - **Contact Information**: Verify maintainer and contributor information is present
+          
+          8. **Course Structure Validation** (for educational repositories)
+             
+             - **Lesson Clarity**: Ensure lessons are clear, logical, and step-by-step
+             - **Grammar & Style**: Check for grammatical correctness and consistent writing style
+             - **Learning Objectives**: Verify each lesson has clear learning objectives
+             - **Progressive Difficulty**: Ensure lessons build upon previous knowledge appropriately
+             - **Hands-on Components**: Validate practical exercises and labs are included
+             - **Assessment Opportunities**: Check for quizzes, exercises, or projects to reinforce learning
+          
+          9. **Security & Compliance**
+             
+             - **Security Scans**: Verify security scanning workflows exist and are actively running
+             - **Dependency Scanning**: Check for automated dependency vulnerability scanning
+             - **Secret Scanning**: Ensure no hardcoded secrets or credentials in code
+             - **License Compliance**: Validate all dependencies have compatible licenses
+             - **Security Policy**: Confirm SECURITY.md exists with vulnerability reporting instructions
+             - **Code of Conduct**: Verify CODE_OF_CONDUCT.md is present and up-to-date
+          
+          10. **Link Validation**
+             
+             - **Internal Links**: Test all relative links within the repository
+             - **External Links**: Verify external documentation and resource links are accessible
+             - **Image Links**: Check all image references resolve correctly
+             - **Translation Links**: Ensure links work across all translated versions
+             - **Dead Link Detection**: Flag broken or deprecated URLs for updating
+          
+          11. **Additional Quality Checks**
+             
+             - **Code Sample Dependencies**: Verify package.json, requirements.txt, pom.xml, Cargo.toml are complete
+             - **Version Consistency**: Check that version numbers are consistent across documentation
+             - **Cross-Platform Support**: Ensure examples work across different operating systems
+             - **Performance Considerations**: Flag potentially inefficient code patterns
+             - **Accessibility Testing**: Validate WCAG 2.1 compliance for all content
+             - **Mobile Responsiveness**: Check that documentation renders well on mobile devices
           
           ### Output Requirements
           
-          - **Create Draft Pull Requests**: When documentation needs updates, create focused draft pull requests with clear descriptions
+          - **Create Draft Pull Requests**: When content quality issues are identified, create focused draft pull requests with clear descriptions of improvements
+          - **Provide Actionable Feedback**: Suggest specific improvements with examples
+          - **Prioritize Issues**: Flag critical issues (broken code, security concerns) vs. minor improvements
           
           ### Technical Implementation
           
-          - **Hosting**: Prepare documentation for GitHub Pages deployment with branch-based workflows
-          - **Automation**: Implement linting and style checking for documentation consistency
+          - **Multi-Language Support**: Test code samples across different language implementations
+          - **Automated Checks**: Implement linting and validation for markdown and code
+          - **Accessibility Validation**: Ensure content meets WCAG standards
           
           ### Error Handling
           
-          - If documentation directories don't exist, suggest appropriate structure
-          - If build tools are missing, recommend necessary packages or configuration
+          - If code samples fail to run, document the errors and suggest fixes
+          - If translations are missing or outdated, flag for translation workflow
+          - If learning path has gaps, suggest additional content or reorganization
           
           ### Exit Conditions
           
-          - Exit if the repository has no implementation code yet (empty repository)
-          - Exit if no code changes require documentation updates
-          - Exit if all documentation is already up-to-date and comprehensive
+          - Exit if the repository has no recent changes to content
+          - Exit if all content meets quality standards
+          - Exit if changes are only to non-content files (e.g., .github workflows)
           
-          > NOTE: Never make direct pushes to the main branch. Always create a pull request for documentation changes.
+          > NOTE: Never make direct pushes to the main branch. Always create a pull request for content improvements.
           
-          > NOTE: Treat documentation gaps like failing tests.
+          > NOTE: Treat content quality issues like failing tests - they should be addressed promptly to maintain educational effectiveness.
           
           PROMPT_EOF
       - name: Append XPIA security instructions to prompt
@@ -1213,12 +1931,12 @@ jobs:
             const fs = require('fs');
             
             const awInfo = {
-              engine_id: "copilot",
-              engine_name: "GitHub Copilot CLI",
+              engine_id: "claude",
+              engine_name: "Claude Code",
               model: "",
               version: "",
-              agent_version: "0.0.358",
-              workflow_name: "Update Docs",
+              agent_version: "2.0.44",
+              workflow_name: "Content Evaluator",
               experimental: false,
               supports_tools_allowlist: true,
               supports_http_transport: true,
@@ -1249,30 +1967,106 @@ jobs:
           name: aw_info.json
           path: /tmp/gh-aw/aw_info.json
           if-no-files-found: warn
-      - name: Execute GitHub Copilot CLI
+      - name: Execute Claude Code CLI
         id: agentic_execution
-        # Copilot CLI tool arguments (sorted):
+        # Allowed tools (sorted):
+        # - Bash
+        # - BashOutput
+        # - Edit
+        # - ExitPlanMode
+        # - Glob
+        # - Grep
+        # - KillBash
+        # - LS
+        # - MultiEdit
+        # - NotebookEdit
+        # - NotebookRead
+        # - Read
+        # - Task
+        # - TodoWrite
+        # - WebFetch
+        # - WebSearch
+        # - Write
+        # - mcp__github__download_workflow_run_artifact
+        # - mcp__github__get_code_scanning_alert
+        # - mcp__github__get_commit
+        # - mcp__github__get_dependabot_alert
+        # - mcp__github__get_discussion
+        # - mcp__github__get_discussion_comments
+        # - mcp__github__get_file_contents
+        # - mcp__github__get_job_logs
+        # - mcp__github__get_label
+        # - mcp__github__get_latest_release
+        # - mcp__github__get_me
+        # - mcp__github__get_notification_details
+        # - mcp__github__get_pull_request
+        # - mcp__github__get_pull_request_comments
+        # - mcp__github__get_pull_request_diff
+        # - mcp__github__get_pull_request_files
+        # - mcp__github__get_pull_request_review_comments
+        # - mcp__github__get_pull_request_reviews
+        # - mcp__github__get_pull_request_status
+        # - mcp__github__get_release_by_tag
+        # - mcp__github__get_secret_scanning_alert
+        # - mcp__github__get_tag
+        # - mcp__github__get_workflow_run
+        # - mcp__github__get_workflow_run_logs
+        # - mcp__github__get_workflow_run_usage
+        # - mcp__github__issue_read
+        # - mcp__github__list_branches
+        # - mcp__github__list_code_scanning_alerts
+        # - mcp__github__list_commits
+        # - mcp__github__list_dependabot_alerts
+        # - mcp__github__list_discussion_categories
+        # - mcp__github__list_discussions
+        # - mcp__github__list_issue_types
+        # - mcp__github__list_issues
+        # - mcp__github__list_label
+        # - mcp__github__list_notifications
+        # - mcp__github__list_pull_requests
+        # - mcp__github__list_releases
+        # - mcp__github__list_secret_scanning_alerts
+        # - mcp__github__list_starred_repositories
+        # - mcp__github__list_tags
+        # - mcp__github__list_workflow_jobs
+        # - mcp__github__list_workflow_run_artifacts
+        # - mcp__github__list_workflow_runs
+        # - mcp__github__list_workflows
+        # - mcp__github__pull_request_read
+        # - mcp__github__search_code
+        # - mcp__github__search_issues
+        # - mcp__github__search_orgs
+        # - mcp__github__search_pull_requests
+        # - mcp__github__search_repositories
+        # - mcp__github__search_users
         timeout-minutes: 15
         run: |
           set -o pipefail
-          COPILOT_CLI_INSTRUCTION="$(cat /tmp/gh-aw/aw-prompts/prompt.txt)"
-          mkdir -p /tmp/
-          mkdir -p /tmp/gh-aw/
-          mkdir -p /tmp/gh-aw/agent/
-          mkdir -p /tmp/gh-aw/.copilot/logs/
-          copilot --add-dir /tmp/ --add-dir /tmp/gh-aw/ --add-dir /tmp/gh-aw/agent/ --log-level all --log-dir /tmp/gh-aw/.copilot/logs/ --disable-builtin-mcps --allow-all-tools --allow-all-paths --prompt "$COPILOT_CLI_INSTRUCTION" 2>&1 | tee /tmp/gh-aw/agent-stdio.log
+          # Execute Claude Code CLI with prompt from file
+          # Extract markdown body from custom agent file (skip frontmatter)
+          AGENT_CONTENT="$(awk 'BEGIN{skip=1} /^---$/{if(skip){skip=0;next}else{skip=1;next}} !skip' "${GITHUB_WORKSPACE}/.github/agents/technical-content-evaluator.md")"
+          # Combine agent content with prompt
+          PROMPT_TEXT="$(printf '%s\n\n%s' "$AGENT_CONTENT" "$(cat /tmp/gh-aw/aw-prompts/prompt.txt)")"
+          claude --print --mcp-config /tmp/gh-aw/mcp-config/mcp-servers.json --allowed-tools Bash,BashOutput,Edit,ExitPlanMode,Glob,Grep,KillBash,LS,MultiEdit,NotebookEdit,NotebookRead,Read,Task,TodoWrite,WebFetch,WebSearch,Write,mcp__github__download_workflow_run_artifact,mcp__github__get_code_scanning_alert,mcp__github__get_commit,mcp__github__get_dependabot_alert,mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__get_file_contents,mcp__github__get_job_logs,mcp__github__get_label,mcp__github__get_latest_release,mcp__github__get_me,mcp__github__get_notification_details,mcp__github__get_pull_request,mcp__github__get_pull_request_comments,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_files,mcp__github__get_pull_request_review_comments,mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_status,mcp__github__get_release_by_tag,mcp__github__get_secret_scanning_alert,mcp__github__get_tag,mcp__github__get_workflow_run,mcp__github__get_workflow_run_logs,mcp__github__get_workflow_run_usage,mcp__github__issue_read,mcp__github__list_branches,mcp__github__list_code_scanning_alerts,mcp__github__list_commits,mcp__github__list_dependabot_alerts,mcp__github__list_discussion_categories,mcp__github__list_discussions,mcp__github__list_issue_types,mcp__github__list_issues,mcp__github__list_label,mcp__github__list_notifications,mcp__github__list_pull_requests,mcp__github__list_releases,mcp__github__list_secret_scanning_alerts,mcp__github__list_starred_repositories,mcp__github__list_tags,mcp__github__list_workflow_jobs,mcp__github__list_workflow_run_artifacts,mcp__github__list_workflow_runs,mcp__github__list_workflows,mcp__github__pull_request_read,mcp__github__search_code,mcp__github__search_issues,mcp__github__search_orgs,mcp__github__search_pull_requests,mcp__github__search_repositories,mcp__github__search_users --debug --verbose --permission-mode bypassPermissions --output-format stream-json --settings /tmp/gh-aw/.claude/settings.json "$PROMPT_TEXT" 2>&1 | tee /tmp/gh-aw/agent-stdio.log
         env:
-          COPILOT_AGENT_RUNNER_TYPE: STANDALONE
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || secrets.COPILOT_CLI_TOKEN  }}
-          GH_AW_MCP_CONFIG: /home/runner/.copilot/mcp-config.json
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DISABLE_TELEMETRY: "1"
+          DISABLE_ERROR_REPORTING: "1"
+          DISABLE_BUG_COMMAND: "1"
           GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
+          GH_AW_MCP_CONFIG: /tmp/gh-aw/mcp-config/mcp-servers.json
+          MCP_TIMEOUT: "120000"
+          MCP_TOOL_TIMEOUT: "60000"
+          BASH_DEFAULT_TIMEOUT_MS: "60000"
+          BASH_MAX_TIMEOUT_MS: "60000"
           GH_AW_SAFE_OUTPUTS: ${{ env.GH_AW_SAFE_OUTPUTS }}
-          GITHUB_HEAD_REF: ${{ github.head_ref }}
-          GITHUB_MCP_SERVER_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
-          GITHUB_WORKSPACE: ${{ github.workspace }}
-          XDG_CONFIG_HOME: /home/runner
+      - name: Clean up network proxy hook files
+        if: always()
+        run: |
+          rm -rf .claude/hooks/network_permissions.py || true
+          rm -rf .claude/hooks || true
+          rm -rf .claude || true
       - name: Redact secrets in logs
         if: always()
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -1384,9 +2178,9 @@ jobs:
             }
             await main();
         env:
-          GH_AW_SECRET_NAMES: 'COPILOT_CLI_TOKEN,COPILOT_GITHUB_TOKEN,GH_AW_GITHUB_TOKEN,GITHUB_TOKEN'
-          SECRET_COPILOT_CLI_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
-          SECRET_COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          GH_AW_SECRET_NAMES: 'ANTHROPIC_API_KEY,CLAUDE_CODE_OAUTH_TOKEN,GH_AW_GITHUB_TOKEN,GITHUB_TOKEN'
+          SECRET_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SECRET_CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SECRET_GH_AW_GITHUB_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN }}
           SECRET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload Safe Outputs
@@ -1401,7 +2195,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_SAFE_OUTPUTS: ${{ env.GH_AW_SAFE_OUTPUTS }}
-          GH_AW_ALLOWED_DOMAINS: "api.enterprise.githubcopilot.com,api.github.com,github.com,raw.githubusercontent.com,registry.npmjs.org"
+          GH_AW_ALLOWED_DOMAINS: "crl3.digicert.com,crl4.digicert.com,ocsp.digicert.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,crl.geotrust.com,ocsp.geotrust.com,crl.thawte.com,ocsp.thawte.com,crl.verisign.com,ocsp.verisign.com,crl.globalsign.com,ocsp.globalsign.com,crls.ssl.com,ocsp.ssl.com,crl.identrust.com,ocsp.identrust.com,crl.sectigo.com,ocsp.sectigo.com,crl.usertrust.com,ocsp.usertrust.com,s.symcb.com,s.symcd.com,json-schema.org,json.schemastore.org,archive.ubuntu.com,security.ubuntu.com,ppa.launchpad.net,keyserver.ubuntu.com,azure.archive.ubuntu.com,api.snapcraft.io,packagecloud.io,packages.cloud.google.com,packages.microsoft.com"
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_API_URL: ${{ github.api_url }}
         with:
@@ -2322,13 +3116,6 @@ jobs:
           name: agent_output.json
           path: ${{ env.GH_AW_AGENT_OUTPUT }}
           if-no-files-found: warn
-      - name: Upload engine output files
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
-        with:
-          name: agent_outputs
-          path: |
-            /tmp/gh-aw/.copilot/logs/
-          if-no-files-found: ignore
       - name: Upload MCP logs
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
@@ -2340,7 +3127,7 @@ jobs:
         if: always()
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          GH_AW_AGENT_OUTPUT: /tmp/gh-aw/.copilot/logs/
+          GH_AW_AGENT_OUTPUT: /tmp/gh-aw/agent-stdio.log
         with:
           script: |
             function runLogParser(options) {
@@ -2455,29 +3242,12 @@ jobs:
             }
             function main() {
               runLogParser({
-                parseLog: parseCopilotLog,
-                parserName: "Copilot",
-                supportsDirectories: true,
+                parseLog: parseClaudeLog,
+                parserName: "Claude",
+                supportsDirectories: false,
               });
             }
-            function extractPremiumRequestCount(logContent) {
-              const patterns = [
-                /premium\s+requests?\s+consumed:?\s*(\d+)/i,
-                /(\d+)\s+premium\s+requests?\s+consumed/i,
-                /consumed\s+(\d+)\s+premium\s+requests?/i,
-              ];
-              for (const pattern of patterns) {
-                const match = logContent.match(pattern);
-                if (match && match[1]) {
-                  const count = parseInt(match[1], 10);
-                  if (!isNaN(count) && count > 0) {
-                    return count;
-                  }
-                }
-              }
-              return 1;
-            }
-            function parseCopilotLog(logContent) {
+            function parseClaudeLog(logContent) {
               try {
                 let logEntries;
                 try {
@@ -2486,42 +3256,41 @@ jobs:
                     throw new Error("Not a JSON array");
                   }
                 } catch (jsonArrayError) {
-                  const debugLogEntries = parseDebugLogFormat(logContent);
-                  if (debugLogEntries && debugLogEntries.length > 0) {
-                    logEntries = debugLogEntries;
-                  } else {
-                    logEntries = [];
-                    const lines = logContent.split("\n");
-                    for (const line of lines) {
-                      const trimmedLine = line.trim();
-                      if (trimmedLine === "") {
-                        continue; 
-                      }
-                      if (trimmedLine.startsWith("[{")) {
-                        try {
-                          const arrayEntries = JSON.parse(trimmedLine);
-                          if (Array.isArray(arrayEntries)) {
-                            logEntries.push(...arrayEntries);
-                            continue;
-                          }
-                        } catch (arrayParseError) {
+                  logEntries = [];
+                  const lines = logContent.split("\n");
+                  for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (trimmedLine === "") {
+                      continue; 
+                    }
+                    if (trimmedLine.startsWith("[{")) {
+                      try {
+                        const arrayEntries = JSON.parse(trimmedLine);
+                        if (Array.isArray(arrayEntries)) {
+                          logEntries.push(...arrayEntries);
                           continue;
                         }
-                      }
-                      if (!trimmedLine.startsWith("{")) {
+                      } catch (arrayParseError) {
                         continue;
                       }
-                      try {
-                        const jsonEntry = JSON.parse(trimmedLine);
-                        logEntries.push(jsonEntry);
-                      } catch (jsonLineError) {
-                        continue;
-                      }
+                    }
+                    if (!trimmedLine.startsWith("{")) {
+                      continue;
+                    }
+                    try {
+                      const jsonEntry = JSON.parse(trimmedLine);
+                      logEntries.push(jsonEntry);
+                    } catch (jsonLineError) {
+                      continue;
                     }
                   }
                 }
                 if (!Array.isArray(logEntries) || logEntries.length === 0) {
-                  return "## Agent Log Summary\n\nLog format not recognized as Copilot JSON array or JSONL.\n";
+                  return {
+                    markdown: "## Agent Log Summary\n\nLog format not recognized as Claude JSON array or JSONL.\n",
+                    mcpFailures: [],
+                    maxTurnsHit: false,
+                  };
                 }
                 const toolUsePairs = new Map(); 
                 for (const entry of logEntries) {
@@ -2534,10 +3303,13 @@ jobs:
                   }
                 }
                 let markdown = "";
+                const mcpFailures = [];
                 const initEntry = logEntries.find(entry => entry.type === "system" && entry.subtype === "init");
                 if (initEntry) {
                   markdown += "## 🚀 Initialization\n\n";
-                  markdown += formatInitializationSummary(initEntry);
+                  const initResult = formatInitializationSummary(initEntry);
+                  markdown += initResult.markdown;
+                  mcpFailures.push(...initResult.mcpFailures);
                   markdown += "\n";
                 }
                 markdown += "\n## 🤖 Reasoning\n\n";
@@ -2551,7 +3323,7 @@ jobs:
                         }
                       } else if (content.type === "tool_use") {
                         const toolResult = toolUsePairs.get(content.id);
-                        const toolMarkdown = formatToolUseWithDetails(content, toolResult);
+                        const toolMarkdown = formatToolUse(content, toolResult);
                         if (toolMarkdown) {
                           markdown += toolMarkdown;
                         }
@@ -2568,7 +3340,7 @@ jobs:
                         const toolName = content.name;
                         const input = content.input || {};
                         if (["Read", "Write", "Edit", "MultiEdit", "LS", "Grep", "Glob", "TodoWrite"].includes(toolName)) {
-                          continue;
+                          continue; 
                         }
                         const toolResult = toolUsePairs.get(content.id);
                         let statusIcon = "❓";
@@ -2610,12 +3382,6 @@ jobs:
                   if (lastEntry.total_cost_usd) {
                     markdown += `**Total Cost:** $${lastEntry.total_cost_usd.toFixed(4)}\n\n`;
                   }
-                  const isPremiumModel =
-                    initEntry && initEntry.model_info && initEntry.model_info.billing && initEntry.model_info.billing.is_premium === true;
-                  if (isPremiumModel) {
-                    const premiumRequestCount = extractPremiumRequestCount(logContent);
-                    markdown += `**Premium Requests Consumed:** ${premiumRequestCount}\n\n`;
-                  }
                   if (lastEntry.usage) {
                     const usage = lastEntry.usage;
                     if (usage.input_tokens || usage.output_tokens) {
@@ -2627,438 +3393,33 @@ jobs:
                       markdown += "\n";
                     }
                   }
+                  if (lastEntry.permission_denials && lastEntry.permission_denials.length > 0) {
+                    markdown += `**Permission Denials:** ${lastEntry.permission_denials.length}\n\n`;
+                  }
                 }
-                return markdown;
+                let maxTurnsHit = false;
+                const maxTurns = process.env.GH_AW_MAX_TURNS;
+                if (maxTurns && lastEntry && lastEntry.num_turns) {
+                  const configuredMaxTurns = parseInt(maxTurns, 10);
+                  if (!isNaN(configuredMaxTurns) && lastEntry.num_turns >= configuredMaxTurns) {
+                    maxTurnsHit = true;
+                  }
+                }
+                return { markdown, mcpFailures, maxTurnsHit };
               } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                return `## Agent Log Summary\n\nError parsing Copilot log (tried both JSON array and JSONL formats): ${errorMessage}\n`;
-              }
-            }
-            function scanForToolErrors(logContent) {
-              const toolErrors = new Map();
-              const lines = logContent.split("\n");
-              const recentToolCalls = [];
-              const MAX_RECENT_TOOLS = 10;
-              for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                if (line.includes('"tool_calls":') && !line.includes('\\"tool_calls\\"')) {
-                  for (let j = i + 1; j < Math.min(i + 30, lines.length); j++) {
-                    const nextLine = lines[j];
-                    const idMatch = nextLine.match(/"id":\s*"([^"]+)"/);
-                    const nameMatch = nextLine.match(/"name":\s*"([^"]+)"/) && !nextLine.includes('\\"name\\"');
-                    if (idMatch) {
-                      const toolId = idMatch[1];
-                      for (let k = j; k < Math.min(j + 10, lines.length); k++) {
-                        const nameLine = lines[k];
-                        const funcNameMatch = nameLine.match(/"name":\s*"([^"]+)"/);
-                        if (funcNameMatch && !nameLine.includes('\\"name\\"')) {
-                          const toolName = funcNameMatch[1];
-                          recentToolCalls.unshift({ id: toolId, name: toolName });
-                          if (recentToolCalls.length > MAX_RECENT_TOOLS) {
-                            recentToolCalls.pop();
-                          }
-                          break;
-                        }
-                      }
-                    }
-                  }
-                }
-                const errorMatch = line.match(/\[ERROR\].*(?:Tool execution failed|Permission denied|Resource not accessible|Error executing tool)/i);
-                if (errorMatch) {
-                  const toolNameMatch = line.match(/Tool execution failed:\s*([^\s]+)/i);
-                  const toolIdMatch = line.match(/tool_call_id:\s*([^\s]+)/i);
-                  if (toolNameMatch) {
-                    const toolName = toolNameMatch[1];
-                    toolErrors.set(toolName, true);
-                    const matchingTool = recentToolCalls.find(t => t.name === toolName);
-                    if (matchingTool) {
-                      toolErrors.set(matchingTool.id, true);
-                    }
-                  } else if (toolIdMatch) {
-                    toolErrors.set(toolIdMatch[1], true);
-                  } else if (recentToolCalls.length > 0) {
-                    const lastTool = recentToolCalls[0];
-                    toolErrors.set(lastTool.id, true);
-                    toolErrors.set(lastTool.name, true);
-                  }
-                }
-              }
-              return toolErrors;
-            }
-            function parseDebugLogFormat(logContent) {
-              const entries = [];
-              const lines = logContent.split("\n");
-              const toolErrors = scanForToolErrors(logContent);
-              let model = "unknown";
-              let sessionId = null;
-              let modelInfo = null;
-              let tools = [];
-              const modelMatch = logContent.match(/Starting Copilot CLI: ([\d.]+)/);
-              if (modelMatch) {
-                sessionId = `copilot-${modelMatch[1]}-${Date.now()}`;
-              }
-              const gotModelInfoIndex = logContent.indexOf("[DEBUG] Got model info: {");
-              if (gotModelInfoIndex !== -1) {
-                const jsonStart = logContent.indexOf("{", gotModelInfoIndex);
-                if (jsonStart !== -1) {
-                  let braceCount = 0;
-                  let inString = false;
-                  let escapeNext = false;
-                  let jsonEnd = -1;
-                  for (let i = jsonStart; i < logContent.length; i++) {
-                    const char = logContent[i];
-                    if (escapeNext) {
-                      escapeNext = false;
-                      continue;
-                    }
-                    if (char === "\\") {
-                      escapeNext = true;
-                      continue;
-                    }
-                    if (char === '"' && !escapeNext) {
-                      inString = !inString;
-                      continue;
-                    }
-                    if (inString) continue;
-                    if (char === "{") {
-                      braceCount++;
-                    } else if (char === "}") {
-                      braceCount--;
-                      if (braceCount === 0) {
-                        jsonEnd = i + 1;
-                        break;
-                      }
-                    }
-                  }
-                  if (jsonEnd !== -1) {
-                    const modelInfoJson = logContent.substring(jsonStart, jsonEnd);
-                    try {
-                      modelInfo = JSON.parse(modelInfoJson);
-                    } catch (e) {
-                    }
-                  }
-                }
-              }
-              const toolsIndex = logContent.indexOf("[DEBUG] Tools:");
-              if (toolsIndex !== -1) {
-                const afterToolsLine = logContent.indexOf("\n", toolsIndex);
-                let toolsStart = logContent.indexOf("[DEBUG] [", afterToolsLine);
-                if (toolsStart !== -1) {
-                  toolsStart = logContent.indexOf("[", toolsStart + 7); 
-                }
-                if (toolsStart !== -1) {
-                  let bracketCount = 0;
-                  let inString = false;
-                  let escapeNext = false;
-                  let toolsEnd = -1;
-                  for (let i = toolsStart; i < logContent.length; i++) {
-                    const char = logContent[i];
-                    if (escapeNext) {
-                      escapeNext = false;
-                      continue;
-                    }
-                    if (char === "\\") {
-                      escapeNext = true;
-                      continue;
-                    }
-                    if (char === '"' && !escapeNext) {
-                      inString = !inString;
-                      continue;
-                    }
-                    if (inString) continue;
-                    if (char === "[") {
-                      bracketCount++;
-                    } else if (char === "]") {
-                      bracketCount--;
-                      if (bracketCount === 0) {
-                        toolsEnd = i + 1;
-                        break;
-                      }
-                    }
-                  }
-                  if (toolsEnd !== -1) {
-                    let toolsJson = logContent.substring(toolsStart, toolsEnd);
-                    toolsJson = toolsJson.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z \[DEBUG\] /gm, "");
-                    try {
-                      const toolsArray = JSON.parse(toolsJson);
-                      if (Array.isArray(toolsArray)) {
-                        tools = toolsArray
-                          .map(tool => {
-                            if (tool.type === "function" && tool.function && tool.function.name) {
-                              let name = tool.function.name;
-                              if (name.startsWith("github-")) {
-                                name = "mcp__github__" + name.substring(7);
-                              } else if (name.startsWith("safe_outputs-")) {
-                                name = name; 
-                              }
-                              return name;
-                            }
-                            return null;
-                          })
-                          .filter(name => name !== null);
-                      }
-                    } catch (e) {
-                    }
-                  }
-                }
-              }
-              let inDataBlock = false;
-              let currentJsonLines = [];
-              let turnCount = 0;
-              for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                if (line.includes("[DEBUG] data:")) {
-                  inDataBlock = true;
-                  currentJsonLines = [];
-                  continue;
-                }
-                if (inDataBlock) {
-                  const hasTimestamp = line.match(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z /);
-                  if (hasTimestamp) {
-                    const cleanLine = line.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z \[DEBUG\] /, "");
-                    const isJsonContent = /^[{\[}\]"]/.test(cleanLine) || cleanLine.trim().startsWith('"');
-                    if (!isJsonContent) {
-                      if (currentJsonLines.length > 0) {
-                        try {
-                          const jsonStr = currentJsonLines.join("\n");
-                          const jsonData = JSON.parse(jsonStr);
-                          if (jsonData.model) {
-                            model = jsonData.model;
-                          }
-                          if (jsonData.choices && Array.isArray(jsonData.choices)) {
-                            for (const choice of jsonData.choices) {
-                              if (choice.message) {
-                                const message = choice.message;
-                                const content = [];
-                                const toolResults = []; 
-                                if (message.content && message.content.trim()) {
-                                  content.push({
-                                    type: "text",
-                                    text: message.content,
-                                  });
-                                }
-                                if (message.tool_calls && Array.isArray(message.tool_calls)) {
-                                  for (const toolCall of message.tool_calls) {
-                                    if (toolCall.function) {
-                                      let toolName = toolCall.function.name;
-                                      const originalToolName = toolName; 
-                                      const toolId = toolCall.id || `tool_${Date.now()}_${Math.random()}`;
-                                      let args = {};
-                                      if (toolName.startsWith("github-")) {
-                                        toolName = "mcp__github__" + toolName.substring(7);
-                                      } else if (toolName === "bash") {
-                                        toolName = "Bash";
-                                      }
-                                      try {
-                                        args = JSON.parse(toolCall.function.arguments);
-                                      } catch (e) {
-                                        args = {};
-                                      }
-                                      content.push({
-                                        type: "tool_use",
-                                        id: toolId,
-                                        name: toolName,
-                                        input: args,
-                                      });
-                                      const hasError = toolErrors.has(toolId) || toolErrors.has(originalToolName);
-                                      toolResults.push({
-                                        type: "tool_result",
-                                        tool_use_id: toolId,
-                                        content: hasError ? "Permission denied or tool execution failed" : "", 
-                                        is_error: hasError, 
-                                      });
-                                    }
-                                  }
-                                }
-                                if (content.length > 0) {
-                                  entries.push({
-                                    type: "assistant",
-                                    message: { content },
-                                  });
-                                  turnCount++;
-                                  if (toolResults.length > 0) {
-                                    entries.push({
-                                      type: "user",
-                                      message: { content: toolResults },
-                                    });
-                                  }
-                                }
-                              }
-                            }
-                            if (jsonData.usage) {
-                              if (!entries._accumulatedUsage) {
-                                entries._accumulatedUsage = {
-                                  input_tokens: 0,
-                                  output_tokens: 0,
-                                };
-                              }
-                              if (jsonData.usage.prompt_tokens) {
-                                entries._accumulatedUsage.input_tokens += jsonData.usage.prompt_tokens;
-                              }
-                              if (jsonData.usage.completion_tokens) {
-                                entries._accumulatedUsage.output_tokens += jsonData.usage.completion_tokens;
-                              }
-                              entries._lastResult = {
-                                type: "result",
-                                num_turns: turnCount,
-                                usage: entries._accumulatedUsage,
-                              };
-                            }
-                          }
-                        } catch (e) {
-                        }
-                      }
-                      inDataBlock = false;
-                      currentJsonLines = [];
-                      continue; 
-                    } else if (hasTimestamp && isJsonContent) {
-                      currentJsonLines.push(cleanLine);
-                    }
-                  } else {
-                    const cleanLine = line.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z \[DEBUG\] /, "");
-                    currentJsonLines.push(cleanLine);
-                  }
-                }
-              }
-              if (inDataBlock && currentJsonLines.length > 0) {
-                try {
-                  const jsonStr = currentJsonLines.join("\n");
-                  const jsonData = JSON.parse(jsonStr);
-                  if (jsonData.model) {
-                    model = jsonData.model;
-                  }
-                  if (jsonData.choices && Array.isArray(jsonData.choices)) {
-                    for (const choice of jsonData.choices) {
-                      if (choice.message) {
-                        const message = choice.message;
-                        const content = [];
-                        const toolResults = []; 
-                        if (message.content && message.content.trim()) {
-                          content.push({
-                            type: "text",
-                            text: message.content,
-                          });
-                        }
-                        if (message.tool_calls && Array.isArray(message.tool_calls)) {
-                          for (const toolCall of message.tool_calls) {
-                            if (toolCall.function) {
-                              let toolName = toolCall.function.name;
-                              const originalToolName = toolName;
-                              const toolId = toolCall.id || `tool_${Date.now()}_${Math.random()}`;
-                              let args = {};
-                              if (toolName.startsWith("github-")) {
-                                toolName = "mcp__github__" + toolName.substring(7);
-                              } else if (toolName === "bash") {
-                                toolName = "Bash";
-                              }
-                              try {
-                                args = JSON.parse(toolCall.function.arguments);
-                              } catch (e) {
-                                args = {};
-                              }
-                              content.push({
-                                type: "tool_use",
-                                id: toolId,
-                                name: toolName,
-                                input: args,
-                              });
-                              const hasError = toolErrors.has(toolId) || toolErrors.has(originalToolName);
-                              toolResults.push({
-                                type: "tool_result",
-                                tool_use_id: toolId,
-                                content: hasError ? "Permission denied or tool execution failed" : "",
-                                is_error: hasError,
-                              });
-                            }
-                          }
-                        }
-                        if (content.length > 0) {
-                          entries.push({
-                            type: "assistant",
-                            message: { content },
-                          });
-                          turnCount++;
-                          if (toolResults.length > 0) {
-                            entries.push({
-                              type: "user",
-                              message: { content: toolResults },
-                            });
-                          }
-                        }
-                      }
-                    }
-                    if (jsonData.usage) {
-                      if (!entries._accumulatedUsage) {
-                        entries._accumulatedUsage = {
-                          input_tokens: 0,
-                          output_tokens: 0,
-                        };
-                      }
-                      if (jsonData.usage.prompt_tokens) {
-                        entries._accumulatedUsage.input_tokens += jsonData.usage.prompt_tokens;
-                      }
-                      if (jsonData.usage.completion_tokens) {
-                        entries._accumulatedUsage.output_tokens += jsonData.usage.completion_tokens;
-                      }
-                      entries._lastResult = {
-                        type: "result",
-                        num_turns: turnCount,
-                        usage: entries._accumulatedUsage,
-                      };
-                    }
-                  }
-                } catch (e) {
-                }
-              }
-              if (entries.length > 0) {
-                const initEntry = {
-                  type: "system",
-                  subtype: "init",
-                  session_id: sessionId,
-                  model: model,
-                  tools: tools, 
+                return {
+                  markdown: `## Agent Log Summary\n\nError parsing Claude log (tried both JSON array and JSONL formats): ${errorMessage}\n`,
+                  mcpFailures: [],
+                  maxTurnsHit: false,
                 };
-                if (modelInfo) {
-                  initEntry.model_info = modelInfo;
-                }
-                entries.unshift(initEntry);
-                if (entries._lastResult) {
-                  entries.push(entries._lastResult);
-                  delete entries._lastResult;
-                }
               }
-              return entries;
             }
             function formatInitializationSummary(initEntry) {
               let markdown = "";
+              const mcpFailures = [];
               if (initEntry.model) {
                 markdown += `**Model:** ${initEntry.model}\n\n`;
-              }
-              if (initEntry.model_info) {
-                const modelInfo = initEntry.model_info;
-                if (modelInfo.name) {
-                  markdown += `**Model Name:** ${modelInfo.name}`;
-                  if (modelInfo.vendor) {
-                    markdown += ` (${modelInfo.vendor})`;
-                  }
-                  markdown += "\n\n";
-                }
-                if (modelInfo.billing) {
-                  const billing = modelInfo.billing;
-                  if (billing.is_premium === true) {
-                    markdown += `**Premium Model:** Yes`;
-                    if (billing.multiplier && billing.multiplier !== 1) {
-                      markdown += ` (${billing.multiplier}x cost multiplier)`;
-                    }
-                    markdown += "\n";
-                    if (billing.restricted_to && Array.isArray(billing.restricted_to) && billing.restricted_to.length > 0) {
-                      markdown += `**Required Plans:** ${billing.restricted_to.join(", ")}\n`;
-                    }
-                    markdown += "\n";
-                  } else if (billing.is_premium === false) {
-                    markdown += `**Premium Model:** No\n\n`;
-                  }
-                }
               }
               if (initEntry.session_id) {
                 markdown += `**Session ID:** ${initEntry.session_id}\n\n`;
@@ -3072,6 +3433,35 @@ jobs:
                 for (const server of initEntry.mcp_servers) {
                   const statusIcon = server.status === "connected" ? "✅" : server.status === "failed" ? "❌" : "❓";
                   markdown += `- ${statusIcon} ${server.name} (${server.status})\n`;
+                  if (server.status === "failed") {
+                    mcpFailures.push(server.name);
+                    const errorDetails = [];
+                    if (server.error) {
+                      errorDetails.push(`**Error:** ${server.error}`);
+                    }
+                    if (server.stderr) {
+                      const maxStderrLength = 500;
+                      const stderr = server.stderr.length > maxStderrLength ? server.stderr.substring(0, maxStderrLength) + "..." : server.stderr;
+                      errorDetails.push(`**Stderr:** \`${stderr}\``);
+                    }
+                    if (server.exitCode !== undefined && server.exitCode !== null) {
+                      errorDetails.push(`**Exit Code:** ${server.exitCode}`);
+                    }
+                    if (server.command) {
+                      errorDetails.push(`**Command:** \`${server.command}\``);
+                    }
+                    if (server.message) {
+                      errorDetails.push(`**Message:** ${server.message}`);
+                    }
+                    if (server.reason) {
+                      errorDetails.push(`**Reason:** ${server.reason}`);
+                    }
+                    if (errorDetails.length > 0) {
+                      for (const detail of errorDetails) {
+                        markdown += `  - ${detail}\n`;
+                      }
+                    }
+                  }
                 }
                 markdown += "\n";
               }
@@ -3105,13 +3495,23 @@ jobs:
                 }
                 markdown += "\n";
               }
-              return markdown;
+              if (initEntry.slash_commands && Array.isArray(initEntry.slash_commands)) {
+                const commandCount = initEntry.slash_commands.length;
+                markdown += `**Slash Commands:** ${commandCount} available\n`;
+                if (commandCount <= 10) {
+                  markdown += `- ${initEntry.slash_commands.join(", ")}\n`;
+                } else {
+                  markdown += `- ${initEntry.slash_commands.slice(0, 5).join(", ")}, and ${commandCount - 5} more\n`;
+                }
+                markdown += "\n";
+              }
+              return { markdown, mcpFailures };
             }
-            function formatToolUseWithDetails(toolUse, toolResult) {
+            function formatToolUse(toolUse, toolResult) {
               const toolName = toolUse.name;
               const input = toolUse.input || {};
               if (toolName === "TodoWrite") {
-                return "";
+                return ""; 
               }
               function getStatusIcon() {
                 if (toolResult) {
@@ -3152,7 +3552,7 @@ jobs:
                   break;
                 case "Read":
                   const filePath = input.file_path || input.path || "";
-                  const relativePath = filePath.replace(/^\/[^\/]*\/[^\/]*\/[^\/]*\/[^\/]*\//, "");
+                  const relativePath = filePath.replace(/^\/[^\/]*\/[^\/]*\/[^\/]*\/[^\/]*\//, ""); 
                   summary = `${statusIcon} Read <code>${relativePath}</code>${metadata}`;
                   break;
                 case "Write":
@@ -3193,19 +3593,9 @@ jobs:
                   }
               }
               if (details && details.trim()) {
-                let detailsContent = "";
-                const inputKeys = Object.keys(input);
-                if (inputKeys.length > 0) {
-                  detailsContent += "**Parameters:**\n\n";
-                  detailsContent += "``````json\n";
-                  detailsContent += JSON.stringify(input, null, 2);
-                  detailsContent += "\n``````\n\n";
-                }
-                detailsContent += "**Response:**\n\n";
-                detailsContent += "``````\n";
-                detailsContent += details;
-                detailsContent += "\n``````";
-                return `<details>\n<summary>${summary}</summary>\n\n${detailsContent}\n</details>\n\n`;
+                const maxDetailsLength = 500;
+                const truncatedDetails = details.length > maxDetailsLength ? details.substring(0, maxDetailsLength) + "..." : details;
+                return `<details>\n<summary>${summary}</summary>\n\n\`\`\`\`\`\n${truncatedDetails}\n\`\`\`\`\`\n</details>\n\n`;
               } else {
                 return `${summary}\n\n`;
               }
@@ -3214,8 +3604,8 @@ jobs:
               if (toolName.startsWith("mcp__")) {
                 const parts = toolName.split("__");
                 if (parts.length >= 3) {
-                  const provider = parts[1];
-                  const method = parts.slice(2).join("_");
+                  const provider = parts[1]; 
+                  const method = parts.slice(2).join("_"); 
                   return `${provider}::${method}`;
                 }
               }
@@ -3236,14 +3626,11 @@ jobs:
             }
             if (typeof module !== "undefined" && module.exports) {
               module.exports = {
-                parseCopilotLog,
-                extractPremiumRequestCount,
+                parseClaudeLog,
+                formatToolUse,
                 formatInitializationSummary,
-                formatToolUseWithDetails,
                 formatBashCommand,
                 truncateString,
-                formatMcpName,
-                formatMcpParameters,
                 estimateTokens,
                 formatDuration,
               };
@@ -3260,8 +3647,8 @@ jobs:
         if: always()
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          GH_AW_AGENT_OUTPUT: /tmp/gh-aw/.copilot/logs/
-          GH_AW_ERROR_PATTERNS: "[{\"id\":\"\",\"pattern\":\"::(error)(?:\\\\s+[^:]*)?::(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"GitHub Actions workflow command - error\"},{\"id\":\"\",\"pattern\":\"::(warning)(?:\\\\s+[^:]*)?::(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"GitHub Actions workflow command - warning\"},{\"id\":\"\",\"pattern\":\"::(notice)(?:\\\\s+[^:]*)?::(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"GitHub Actions workflow command - notice\"},{\"id\":\"\",\"pattern\":\"(ERROR|Error):\\\\s+(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"Generic ERROR messages\"},{\"id\":\"\",\"pattern\":\"(WARNING|Warning):\\\\s+(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"Generic WARNING messages\"},{\"id\":\"\",\"pattern\":\"(\\\\d{4}-\\\\d{2}-\\\\d{2}T\\\\d{2}:\\\\d{2}:\\\\d{2}\\\\.\\\\d{3}Z)\\\\s+\\\\[(ERROR)\\\\]\\\\s+(.+)\",\"level_group\":2,\"message_group\":3,\"description\":\"Copilot CLI timestamped ERROR messages\"},{\"id\":\"\",\"pattern\":\"(\\\\d{4}-\\\\d{2}-\\\\d{2}T\\\\d{2}:\\\\d{2}:\\\\d{2}\\\\.\\\\d{3}Z)\\\\s+\\\\[(WARN|WARNING)\\\\]\\\\s+(.+)\",\"level_group\":2,\"message_group\":3,\"description\":\"Copilot CLI timestamped WARNING messages\"},{\"id\":\"\",\"pattern\":\"\\\\[(\\\\d{4}-\\\\d{2}-\\\\d{2}T\\\\d{2}:\\\\d{2}:\\\\d{2}\\\\.\\\\d{3}Z)\\\\]\\\\s+(CRITICAL|ERROR):\\\\s+(.+)\",\"level_group\":2,\"message_group\":3,\"description\":\"Copilot CLI bracketed critical/error messages with timestamp\"},{\"id\":\"\",\"pattern\":\"\\\\[(\\\\d{4}-\\\\d{2}-\\\\d{2}T\\\\d{2}:\\\\d{2}:\\\\d{2}\\\\.\\\\d{3}Z)\\\\]\\\\s+(WARNING):\\\\s+(.+)\",\"level_group\":2,\"message_group\":3,\"description\":\"Copilot CLI bracketed warning messages with timestamp\"},{\"id\":\"\",\"pattern\":\"✗\\\\s+(.+)\",\"level_group\":0,\"message_group\":1,\"description\":\"Copilot CLI failed command indicator\"},{\"id\":\"\",\"pattern\":\"(?:command not found|not found):\\\\s*(.+)|(.+):\\\\s*(?:command not found|not found)\",\"level_group\":0,\"message_group\":0,\"description\":\"Shell command not found error\"},{\"id\":\"\",\"pattern\":\"Cannot find module\\\\s+['\\\"](.+)['\\\"]\",\"level_group\":0,\"message_group\":1,\"description\":\"Node.js module not found error\"},{\"id\":\"\",\"pattern\":\"Permission denied and could not request permission from user\",\"level_group\":0,\"message_group\":0,\"description\":\"Copilot CLI permission denied warning (user interaction required)\"},{\"id\":\"\",\"pattern\":\"\\\\berror\\\\b.*permission.*denied\",\"level_group\":0,\"message_group\":0,\"description\":\"Permission denied error (requires error context)\"},{\"id\":\"\",\"pattern\":\"\\\\berror\\\\b.*unauthorized\",\"level_group\":0,\"message_group\":0,\"description\":\"Unauthorized access error (requires error context)\"},{\"id\":\"\",\"pattern\":\"\\\\berror\\\\b.*forbidden\",\"level_group\":0,\"message_group\":0,\"description\":\"Forbidden access error (requires error context)\"}]"
+          GH_AW_AGENT_OUTPUT: /tmp/gh-aw/agent-stdio.log
+          GH_AW_ERROR_PATTERNS: "[{\"id\":\"\",\"pattern\":\"::(error)(?:\\\\s+[^:]*)?::(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"GitHub Actions workflow command - error\"},{\"id\":\"\",\"pattern\":\"::(warning)(?:\\\\s+[^:]*)?::(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"GitHub Actions workflow command - warning\"},{\"id\":\"\",\"pattern\":\"::(notice)(?:\\\\s+[^:]*)?::(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"GitHub Actions workflow command - notice\"},{\"id\":\"\",\"pattern\":\"(ERROR|Error):\\\\s+(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"Generic ERROR messages\"},{\"id\":\"\",\"pattern\":\"(WARNING|Warning):\\\\s+(.+)\",\"level_group\":1,\"message_group\":2,\"description\":\"Generic WARNING messages\"}]"
         with:
           script: |
             function main() {
@@ -3667,9 +4054,7 @@ jobs:
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
           GH_AW_NOOP_MAX: 1
-          GH_AW_WORKFLOW_NAME: "Update Docs"
-          GH_AW_WORKFLOW_SOURCE: "githubnext/agentics/workflows/update-docs.md@d3422bf940923ef1d43db5559652b8e1e71869f3"
-          GH_AW_WORKFLOW_SOURCE_URL: "${{ github.server_url }}/githubnext/agentics/tree/d3422bf940923ef1d43db5559652b8e1e71869f3/workflows/update-docs.md"
+          GH_AW_WORKFLOW_NAME: "Content Evaluator"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -3755,7 +4140,7 @@ jobs:
           GH_AW_COMMENT_ID: ${{ needs.activation.outputs.comment_id }}
           GH_AW_COMMENT_REPO: ${{ needs.activation.outputs.comment_repo }}
           GH_AW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          GH_AW_WORKFLOW_NAME: "Update Docs"
+          GH_AW_WORKFLOW_NAME: "Content Evaluator"
           GH_AW_AGENT_CONCLUSION: ${{ needs.agent.result }}
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
@@ -3973,9 +4358,7 @@ jobs:
           GH_AW_PR_DRAFT: "true"
           GH_AW_PR_IF_NO_CHANGES: "warn"
           GH_AW_MAX_PATCH_SIZE: 1024
-          GH_AW_WORKFLOW_NAME: "Update Docs"
-          GH_AW_WORKFLOW_SOURCE: "githubnext/agentics/workflows/update-docs.md@d3422bf940923ef1d43db5559652b8e1e71869f3"
-          GH_AW_WORKFLOW_SOURCE_URL: "${{ github.server_url }}/githubnext/agentics/tree/d3422bf940923ef1d43db5559652b8e1e71869f3/workflows/update-docs.md"
+          GH_AW_WORKFLOW_NAME: "Content Evaluator"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -4566,8 +4949,8 @@ jobs:
       - name: Setup threat detection
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          WORKFLOW_NAME: "Update Docs"
-          WORKFLOW_DESCRIPTION: "THis workflow keeps docs synchronized with code changes.\nTriggered on every push to main, it analyzes diffs to identify changed entities and\nupdates corresponding documentation. Maintains consistent style (precise, active voice,\nplain English), ensures single source of truth, and creates draft PRs with documentation\nupdates. Supports documentation-as-code philosophy."
+          WORKFLOW_NAME: "Content Evaluator"
+          WORKFLOW_DESCRIPTION: "This workflow evaluates content quality and consistency across the repository.\nTriggered on every push to main, it analyzes documentation, code samples, and\neducational materials to ensure high quality standards. Maintains consistent style,\nvalidates code examples, checks for accessibility, and creates draft PRs with\nimprovement suggestions. Supports continuous quality improvement philosophy."
         with:
           script: |
             const fs = require('fs');
@@ -4673,57 +5056,65 @@ jobs:
         run: |
           mkdir -p /tmp/gh-aw/threat-detection
           touch /tmp/gh-aw/threat-detection/detection.log
-      - name: Validate COPILOT_GITHUB_TOKEN or COPILOT_CLI_TOKEN secret
+      - name: Validate CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY secret
         run: |
-          if [ -z "$COPILOT_GITHUB_TOKEN" ] && [ -z "$COPILOT_CLI_TOKEN" ]; then
-            echo "Error: Neither COPILOT_GITHUB_TOKEN nor COPILOT_CLI_TOKEN secret is set"
-            echo "The GitHub Copilot CLI engine requires either COPILOT_GITHUB_TOKEN or COPILOT_CLI_TOKEN secret to be configured."
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "Error: Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY secret is set"
+            echo "The Claude Code engine requires either CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY secret to be configured."
             echo "Please configure one of these secrets in your repository settings."
-            echo "Documentation: https://githubnext.github.io/gh-aw/reference/engines/#github-copilot-default"
+            echo "Documentation: https://githubnext.github.io/gh-aw/reference/engines/#anthropic-claude-code"
             exit 1
           fi
-          if [ -n "$COPILOT_GITHUB_TOKEN" ]; then
-            echo "COPILOT_GITHUB_TOKEN secret is configured"
+          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN secret is configured"
           else
-            echo "COPILOT_CLI_TOKEN secret is configured (using as fallback for COPILOT_GITHUB_TOKEN)"
+            echo "ANTHROPIC_API_KEY secret is configured (using as fallback for CLAUDE_CODE_OAUTH_TOKEN)"
           fi
         env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          COPILOT_CLI_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       - name: Setup Node.js
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
         with:
           node-version: '24'
-      - name: Install GitHub Copilot CLI
-        run: npm install -g @github/copilot@0.0.358
-      - name: Execute GitHub Copilot CLI
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.0.44
+      - name: Execute Claude Code CLI
         id: agentic_execution
-        # Copilot CLI tool arguments (sorted):
-        # --allow-tool shell(cat)
-        # --allow-tool shell(grep)
-        # --allow-tool shell(head)
-        # --allow-tool shell(jq)
-        # --allow-tool shell(ls)
-        # --allow-tool shell(tail)
-        # --allow-tool shell(wc)
+        # Allowed tools (sorted):
+        # - Bash(cat)
+        # - Bash(grep)
+        # - Bash(head)
+        # - Bash(jq)
+        # - Bash(ls)
+        # - Bash(tail)
+        # - Bash(wc)
+        # - BashOutput
+        # - ExitPlanMode
+        # - Glob
+        # - Grep
+        # - KillBash
+        # - LS
+        # - NotebookRead
+        # - Read
+        # - Task
+        # - TodoWrite
         timeout-minutes: 20
         run: |
           set -o pipefail
-          COPILOT_CLI_INSTRUCTION="$(cat /tmp/gh-aw/aw-prompts/prompt.txt)"
-          mkdir -p /tmp/
-          mkdir -p /tmp/gh-aw/
-          mkdir -p /tmp/gh-aw/agent/
-          mkdir -p /tmp/gh-aw/.copilot/logs/
-          copilot --add-dir /tmp/ --add-dir /tmp/gh-aw/ --add-dir /tmp/gh-aw/agent/ --log-level all --log-dir /tmp/gh-aw/.copilot/logs/ --disable-builtin-mcps --allow-tool 'shell(cat)' --allow-tool 'shell(grep)' --allow-tool 'shell(head)' --allow-tool 'shell(jq)' --allow-tool 'shell(ls)' --allow-tool 'shell(tail)' --allow-tool 'shell(wc)' --prompt "$COPILOT_CLI_INSTRUCTION" 2>&1 | tee /tmp/gh-aw/threat-detection/detection.log
+          # Execute Claude Code CLI with prompt from file
+          claude --print --allowed-tools 'Bash(cat),Bash(grep),Bash(head),Bash(jq),Bash(ls),Bash(tail),Bash(wc),BashOutput,ExitPlanMode,Glob,Grep,KillBash,LS,NotebookRead,Read,Task,TodoWrite' --debug --verbose --permission-mode bypassPermissions --output-format stream-json "$(cat /tmp/gh-aw/aw-prompts/prompt.txt)" 2>&1 | tee /tmp/gh-aw/threat-detection/detection.log
         env:
-          COPILOT_AGENT_RUNNER_TYPE: STANDALONE
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN || secrets.COPILOT_CLI_TOKEN  }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DISABLE_TELEMETRY: "1"
+          DISABLE_ERROR_REPORTING: "1"
+          DISABLE_BUG_COMMAND: "1"
           GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
-          GITHUB_HEAD_REF: ${{ github.head_ref }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
-          GITHUB_WORKSPACE: ${{ github.workspace }}
-          XDG_CONFIG_HOME: /home/runner
+          MCP_TIMEOUT: "120000"
+          MCP_TOOL_TIMEOUT: "60000"
+          BASH_DEFAULT_TIMEOUT_MS: "60000"
+          BASH_MAX_TIMEOUT_MS: "60000"
       - name: Parse threat detection results
         id: parse_results
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -4802,9 +5193,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
-          GH_AW_WORKFLOW_NAME: "Update Docs"
-          GH_AW_WORKFLOW_SOURCE: "githubnext/agentics/workflows/update-docs.md@d3422bf940923ef1d43db5559652b8e1e71869f3"
-          GH_AW_WORKFLOW_SOURCE_URL: "${{ github.server_url }}/githubnext/agentics/tree/d3422bf940923ef1d43db5559652b8e1e71869f3/workflows/update-docs.md"
+          GH_AW_WORKFLOW_NAME: "Content Evaluator"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -4991,8 +5380,8 @@ jobs:
         id: check_stop_time
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          GH_AW_STOP_TIME: 2025-12-21 09:39:22
-          GH_AW_WORKFLOW_NAME: "Update Docs"
+          GH_AW_STOP_TIME: 2025-12-21 10:40:40
+          GH_AW_WORKFLOW_NAME: "Content Evaluator"
         with:
           script: |
             async function main() {
