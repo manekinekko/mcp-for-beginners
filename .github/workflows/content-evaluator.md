@@ -36,6 +36,11 @@ tools:
   # By default this workflow allows all bash commands within the confine of Github Actions VM 
   bash: [ ":*" ]
 
+mcp-servers:
+  microsoftdocs:
+    url: "https://learn.microsoft.com/api/mcp"
+    allowed: ["*"]
+    
 timeout-minutes: 15
 ---
 
